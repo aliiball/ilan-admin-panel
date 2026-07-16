@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint --deny-warnings",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "storybook": "storybook dev -p 6007",
@@ -45,6 +47,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "oxlint": "^1.71.0",
     "playwright": "^1.61.1",
+    "prettier": "^3.9.5",
     "storybook": "^10.5.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
