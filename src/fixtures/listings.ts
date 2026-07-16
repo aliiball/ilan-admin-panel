@@ -196,6 +196,14 @@ interface BaseFixtureArgs {
   reportCount?: number
   promotionTypes?: PromotionType[]
   moderation?: ModerationSummary
+  /**
+   * İlanın kaçıncı revizyonu. Varsayılan 1.
+   *
+   * `moderationEvents.ts`'teki geçmişle örtüşmelidir: brifing 1.2'ye göre
+   * revizyon, istenen düzeltmeler yapılınca artar — geçmişinde `edited` olayı
+   * olan ilan 1'de kalamaz.
+   */
+  revision?: number
 }
 
 function createBaseListing(args: BaseFixtureArgs): ListingBase {
@@ -265,7 +273,7 @@ function createBaseListing(args: BaseFixtureArgs): ListingBase {
       reportCount: args.reportCount ?? 0,
     },
     source: ListingSource.Web,
-    revision: 1,
+    revision: args.revision ?? 1,
     tags: args.tags ?? [],
   }
 }
@@ -411,7 +419,9 @@ export const landDraftResidentialZoned: LandListing = {
     seller: ownerSeller,
     ownerUserId: 'user-owner-ayse-demir',
     createdAt: '2026-07-15T15:10:00+03:00',
-    updatedAt: '2026-07-15T15:10:00+03:00',
+    // `restoredDraftHistory`'nin son olayı (arşivden geri yükleme) ile aynı an:
+    // geçmişte ilana dokunulmuşsa `updatedAt` oluşturulma anında kalamaz.
+    updatedAt: '2026-07-16T11:15:00+03:00',
     tags: ['taslak'],
   }),
   category: ListingCategory.Land,
@@ -680,6 +690,9 @@ export const buildingArchivedMixedUse: BuildingListing = {
     viewCount: 3_201,
     favoriteCount: 144,
     tags: ['satıldı', 'arşiv'],
+    // `archivedBuildingHistory`'de bir `edited` olayı var: düzeltme istenmiş,
+    // yapılmış ve revizyon 2'ye çıkmıştı.
+    revision: 2,
   }),
   category: ListingCategory.Building,
   transactionType: BuildingTransactionType.Sale,

@@ -14,3 +14,12 @@ export {
   tourismPublishedBoutiqueHotel,
   tourismRejectedPension,
 } from './listings'
+
+export {
+  allModerationEventFixtures,
+  archivedBuildingHistory,
+  emptyModerationHistory,
+  pendingVillaHistory,
+  rejectedFieldHistory,
+  restoredDraftHistory,
+} from './moderationEvents'
