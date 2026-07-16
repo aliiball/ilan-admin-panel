@@ -651,7 +651,17 @@ export enum AdminPermission {
 
   SettingsView = 'settings:view',
   PermissionManage = 'permission:manage',
+  /** Kendi arayüz temasını seçme. Her rolde vardır. */
   ThemeManage = 'theme:manage',
+  /**
+   * Sistem varsayılan temasını değiştirme.
+   *
+   * Brifingden sapma: eklendi. Brifingin yetki matrisi "tema seçimi" (herkes) ile
+   * "sistem teması varsayılanını değiştirme" (yalnız superAdmin) satırlarını
+   * ayırmış, ama enum'da tek bir `ThemeManage` vardı ve dört role de verilmişti —
+   * yani destek rolü sistem varsayılanını değiştirebiliyor görünüyordu.
+   */
+  ThemeSetDefault = 'theme:setDefault',
 
   AuditView = 'audit:view',
 }
@@ -684,6 +694,7 @@ export const ALL_ADMIN_PERMISSIONS = [
   AdminPermission.SettingsView,
   AdminPermission.PermissionManage,
   AdminPermission.ThemeManage,
+  AdminPermission.ThemeSetDefault,
   AdminPermission.AuditView,
 ] as const satisfies readonly AdminPermission[]
 
