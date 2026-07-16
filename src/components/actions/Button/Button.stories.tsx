@@ -21,7 +21,10 @@ const meta = {
       project: 'admin-panel',
       role: 'administrative-action',
       useWhen: ['İlan onaylanırken', 'İlan reddedilirken', 'Toplu moderasyon işlemi yapılırken'],
-      doNotUseWhen: ['Ziyaretçi ilan araması yaparken', 'Public ilan detayında eylem gösterilirken'],
+      doNotUseWhen: [
+        'Ziyaretçi ilan araması yaparken',
+        'Public ilan detayında eylem gösterilirken',
+      ],
     },
   },
 

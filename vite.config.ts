@@ -32,11 +32,7 @@ export default defineConfig({
    * decorator'lar üzerinden istisnasız her story'ye yükleniyorlar.
    */
   optimizeDeps: {
-    include: [
-      '@vanilla-extract/recipes/createRuntimeFn',
-      'react-router',
-      '@tanstack/react-query',
-    ],
+    include: ['@vanilla-extract/recipes/createRuntimeFn', 'react-router', '@tanstack/react-query'],
   },
 
   // https://storybook.js.org/docs/writing-tests/integrations/vitest-addon
