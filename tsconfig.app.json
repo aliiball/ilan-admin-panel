@@ -8,8 +8,11 @@
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
-    /* Type safety */
+    /* Type safety — brifing 5.6 kabul kriterleri */
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
 
     /* Path aliases */
     "paths": {
@@ -27,8 +30,11 @@
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
+
+    /* erasableSyntaxOnly bilerek kapalı: domain.ts `enum` kullanıyor ve enum
+       çalışma anında kod ürettiği için bu ayarla TS1294 veriyordu. Vite/esbuild
+       enum'ları sorunsuz derliyor. */
   },
   "include": ["src"]
 }
