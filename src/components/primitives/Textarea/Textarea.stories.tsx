@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
 import { Textarea } from './Textarea'
 
 const meta = {
@@ -90,6 +91,10 @@ export const WithError: Story = {
 
 export const Disabled: Story = {
   args: { disabled: true, defaultValue: 'Bu not düzenlenemez' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole('textbox')).toBeDisabled()
+  },
 }
 
 export const NoResize: Story = {
