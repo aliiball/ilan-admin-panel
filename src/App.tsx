@@ -1,10 +1,10 @@
-import { vars } from './styles/theme.css'
+import { vars } from './tokens/contract.css'
 
 /**
  * Uygulama kabuğu henüz kurulmadı.
  *
  * Bu aşamada geliştirme yüzeyi Storybook'tur (`pnpm storybook`).
- * Router, layout ve sayfalar component katmanı oturduktan sonra eklenecek.
+ * Router, AppShell ve sayfalar brifingin Faz 3'ünde eklenecek.
  */
 export function App() {
   return (
@@ -12,13 +12,13 @@ export function App() {
       style={{
         display: 'grid',
         placeItems: 'center',
-        height: '100%',
-        padding: vars.space['2xl'],
+        minHeight: '100vh',
+        padding: vars.space[8],
         textAlign: 'center',
       }}
     >
       <div>
-        <h1 style={{ fontSize: vars.font.size['2xl'], marginBottom: vars.space.sm }}>
+        <h1 style={{ fontSize: vars.font.size['3xl'], marginBottom: vars.space[2] }}>
           İlan Admin Panel
         </h1>
         <p style={{ color: vars.color.text.secondary }}>
