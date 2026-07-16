@@ -3,9 +3,20 @@
 Bu repo gayrimenkul ilan platformunun **admin panelini** içerir. Public Front Pages
 ayrı bir repository'dedir ve **component paylaşımı yoktur**.
 
-Kaynak şartname: `gayrimenkul-admin-panel-uygulama-brifingi.md`. Ama o dokümanı
-körlemesine uygulama — aşağıda **doğrulanmış hataları ve onaylanmış sapmaları**
-listeledim. Brifing bunlardan haberdar değil.
+## Şartname
+
+Kaynak şartname: **`gayrimenkul-admin-panel-uygulama-brifingi.md`** (repo kökünde).
+
+Faz 3'ün 11 ekran tanımı, dashboard fixture'ının kesin sayıları ve
+`users.ts`/`reports.ts` fixture gereksinimleri **yalnızca orada** — sırası gelince oku.
+
+Ama **körlemesine uygulama.** Aşağıda brifingin doğrulanmış hatalarını ve
+kullanıcının onayladığı sapmaları listeledim; çelişki olursa **bu dosya üstündür.**
+Brifing bu düzeltmelerden haberdar değil — kendi zorunlu kıldığı
+`exactOptionalPropertyTypes` ile kendi kodu bile derlenmiyordu.
+
+Dosyaya **dokunma ve biçimlendirme** — dış kaynaklı bir referans, `.prettierignore`'da
+tutuluyor. (Bir kez Prettier'a yakalandı ve tabloları yeniden hizalandı.)
 
 ## Değişmez kurallar
 
