@@ -68,6 +68,19 @@ export const text = style({
   minWidth: 0,
 })
 
+/** Görsel olarak gizli, ekran okuyucuya açık. */
+export const visuallyHidden = style({
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: 0,
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  borderWidth: 0,
+})
+
 export const label = style({
   fontSize: vars.font.size.sm,
   lineHeight: vars.lineHeight.tight,

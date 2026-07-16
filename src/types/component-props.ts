@@ -275,6 +275,17 @@ export interface CheckboxProps extends Omit<
    * @default false
    */
   indeterminate?: boolean
+  /**
+   * Etiketi görsel olarak gizler ama ekran okuyucuya bırakır.
+   *
+   * Brifingden sapma: tablo satırı seçim kutusunda etiket görünürse her satırda
+   * tekrar eder, yatay alan yer ve tabloyu okunmaz hale getirir. Ama etiket
+   * tamamen kaldırılamaz — ekran okuyucu kullanıcısı kutunun neyi seçtiğini
+   * yalnızca ondan öğrenir. Gizlemek doğru orta yol.
+   *
+   * @default false
+   */
+  hideLabel?: boolean
   /** Seçim değiştiğinde çalışır. */
   onCheckedChange?: (checked: boolean) => void
 }
@@ -500,6 +511,14 @@ export interface DataTableProps<T extends { id: string }> {
   rows: T[]
   columns: ColumnDef<T>[]
   rowKey?: (row: T) => string
+  /**
+   * Satır seçim kutusunun erişilebilir etiketi.
+   *
+   * Brifingden sapma: eklendi. Gerekçe: etiket verilmezse ekran okuyucu
+   * kullanıcısı 12 satırda da aynı metni duyar ve hangisini seçtiğini anlamaz.
+   * Verilmezse satır numarasına düşülür — jenerik ama en azından benzersiz.
+   */
+  rowLabel?: (row: T) => string
   density?: 'comfortable' | 'compact'
   visualStyle?: 'plain' | 'bordered' | 'striped'
   mobileMode?: 'scroll' | 'cards'

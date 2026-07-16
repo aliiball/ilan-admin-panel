@@ -7,6 +7,7 @@ import {
   indicator,
   label as labelClass,
   text,
+  visuallyHidden,
   wrapper,
 } from './Checkbox.css'
 
@@ -27,6 +28,7 @@ export function Checkbox({
   label,
   description,
   indeterminate = false,
+  hideLabel = false,
   checked,
   defaultChecked,
   disabled = false,
@@ -66,9 +68,11 @@ export function Checkbox({
         </BaseCheckbox.Indicator>
       </BaseCheckbox.Root>
 
-      <span className={text} {...rest}>
-        <span className={labelClass}>{label}</span>
-        {description !== undefined ? <span className={descriptionClass}>{description}</span> : null}
+      <span className={hideLabel ? visuallyHidden : text} {...rest}>
+        <span className={hideLabel ? undefined : labelClass}>{label}</span>
+        {description !== undefined && !hideLabel ? (
+          <span className={descriptionClass}>{description}</span>
+        ) : null}
       </span>
     </label>
   )
