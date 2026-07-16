@@ -12,6 +12,7 @@ import type {
   AdminPermission,
   AdminRole,
   AuditLogEntry,
+  AutomatedCheckResult,
   CategoryAttributeDefinition,
   Currency,
   DashboardMetrics,
@@ -771,43 +772,139 @@ export interface ListingCardProps {
   onSelectedChange?: (selected: boolean) => void
 }
 
+/**
+ * Kullanıcının bu ilan üzerindeki moderasyon yetkileri.
+ *
+ * Yetki *kimin* yapabileceğini söyler; ilanın durumu *neyin şu an mümkün
+ * olduğunu*. İkisi ayrı: `canPause` verilse bile taslak ilan pasife alınamaz.
+ * Durum boyutu `domain/moderationActions.ts`'te.
+ *
+ * Değerler `ROLE_PERMISSIONS`'tan türetilir (`listing:approve` gibi), burada
+ * elle uydurulmaz.
+ */
 export interface ModerationCapabilities {
+  /** `listing:approve` — onay eylemi gösterilsin mi? */
   canApprove: boolean
+  /** `listing:reject` — red eylemi gösterilsin mi? */
   canReject: boolean
+  /** `listing:requestChanges` — düzeltme isteme eylemi gösterilsin mi? */
   canRequestChanges: boolean
+  /** `listing:pause` — pasife alma eylemi gösterilsin mi? */
   canPause: boolean
+  /** `listing:archive` — arşivleme eylemi gösterilsin mi? */
   canArchive: boolean
 }
 
+/** Bir moderasyon kararının sunucuya gidecek yükü. */
 export interface ModerationDecisionPayload {
+  /** Kararın uygulanacağı ilan. */
   listingId: string
+  /**
+   * Moderatörün **gördüğü** revizyon; sunucu kararı buna karşı uygular.
+   *
+   * İyimser eşzamanlılık kilidi: karar verilirken başka bir moderatör ilanı
+   * düzenlemişse sunucudaki revizyon artmış olur, gönderilen değerle uyuşmaz ve
+   * karar reddedilir. Olmasaydı, iki dakika önceki içeriğe bakarak verilen
+   * "onayla" kararı, o arada değişmiş bir ilanı yayına almış olurdu.
+   */
   expectedRevision: number
+  /**
+   * Seçilen red gerekçeleri. Onay ve arşivde boş dizi gelir; red ve düzeltme
+   * isteğinde en az bir üye içerir.
+   */
   reasons: RejectionReason[]
+  /**
+   * Moderatörün notu. Red, düzeltme ve pasife almada doludur; onayda
+   * kullanıcı yazmadıysa hiç gelmez.
+   */
   note?: string
 }
 
 export interface ModerationActionBarProps {
+  /** Karar verilecek ilan; `ModerationDecisionPayload.listingId` olarak geri döner. */
   listingId: string
+  /**
+   * İlanın güncel durumu. Hangi eylemlerin **var olduğunu** belirler: incelemedeki
+   * ilanda onay/red/düzeltme, yayındakinde pasife alma, taslakta yalnız arşivleme
+   * görünür. Geçersiz eylem `disabled` verilmez, hiç render edilmez.
+   */
   status: ListingStatus
+  /** İlanın güncel revizyonu; `expectedRevision` olarak yüke konur. */
   revision: number
+  /** Kullanıcının yetkileri. Yetkisi olmayan eylem hiç render edilmez. */
   capabilities: ModerationCapabilities
+  /**
+   * - `stickyBottom`: ekranın altına yapışır, uzun detay sayfasında hep erişilir.
+   *   Mobilde safe-area boşluğunu bırakır.
+   * - `inline`: normal akışta; kuyrukta kartın altında.
+   * - `sideRail`: dikey kolon, tam genişlik butonlar. Geniş ekranda yan panelde.
+   *
+   * @default 'inline'
+   */
   variant?: 'stickyBottom' | 'inline' | 'sideRail'
+  /**
+   * Süren kararın adı. O butonda spinner çıkar, **diğerleri kapanır**: aynı ilana
+   * aynı anda iki karar göndermek, hangisinin son yazdığına bağlı bir sonuç üretir.
+   */
   submittingAction?: 'approve' | 'reject' | 'requestChanges' | 'pause' | 'archive'
+  /** Onay kararı. Kullanıcı onay dialog'unu geçtikten sonra çağrılır. */
   onApprove: (payload: ModerationDecisionPayload) => void | Promise<void>
+  /** Red kararı. `reasons` en az bir üye, `note` dolu gelir — çubuk ikisini toplamadan çağırmaz. */
   onReject: (payload: ModerationDecisionPayload) => void | Promise<void>
+  /** Düzeltme isteği. Red gibi: `reasons` ve `note` doludur. */
   onRequestChanges: (payload: ModerationDecisionPayload) => void | Promise<void>
+  /** Pasife alma. Verilmezse eylem hiç görünmez — `capabilities.canPause` ile birlikte verilmeli. */
   onPause?: (payload: ModerationDecisionPayload) => void | Promise<void>
+  /** Arşivleme. Verilmezse eylem hiç görünmez — `capabilities.canArchive` ile birlikte verilmeli. */
   onArchive?: (payload: ModerationDecisionPayload) => void | Promise<void>
 }
 
 export interface ImageGalleryProps {
+  /**
+   * Gösterilecek fotoğraflar. `order` alanına göre sıralanır — dizinin geliş
+   * sırasına güvenilmez; kapak `isCover` ile işaretlidir.
+   */
   photos: ListingPhoto[]
+  /**
+   * Büyük görünümdeki fotoğraf. Verilmezse kapak, o da yoksa ilk fotoğraf
+   * gösterilir. Kontrollüdür: verildiğinde galeri kendi seçimini tutmaz.
+   */
   activePhotoId?: string
+  /**
+   * - `mosaic`: kapak büyük, diğerleri ızgarada. Genel bakış.
+   * - `filmstrip`: tek büyük görsel + altta kaydırılan şerit. Tek tek inceleme.
+   * - `split`: görsel solda, moderasyon paneli sağda. Geniş ekranda karar verme.
+   *
+   * @default 'mosaic'
+   */
   variant?: 'mosaic' | 'filmstrip' | 'split'
+  /**
+   * Fotoğraflar yüklenirken skeleton gösterir. Düzen korunur — veri gelince
+   * ızgara zıplamaz.
+   *
+   * @default false
+   */
   loading?: boolean
+  /**
+   * Fotoğraf bazlı onay/red kontrollerini gösterir. Yetki için kullanılır:
+   * kullanıcı görsel moderasyonu yapamıyorsa kontroller hiç render edilmez.
+   *
+   * `onPhotoApprove`/`onPhotoReject` verilmeden `true` yapmak kontrolleri
+   * göstermez — sonuçsuz buton sunmanın anlamı yok.
+   *
+   * @default false
+   */
   allowModeration?: boolean
+  /** Büyük görünümdeki fotoğraf değiştiğinde çalışır. */
   onActivePhotoChange?: (photoId: string) => void
+  /** Fotoğraf uygun işaretlendiğinde çalışır. */
   onPhotoApprove?: (photoId: string) => void
+  /**
+   * Fotoğraf uygunsuz işaretlendiğinde çalışır.
+   *
+   * Gerekçe zorunlu: ilan sahibi "bir fotoğrafınız kaldırıldı" değil, hangisi ve
+   * neden olduğunu görmeli. Not opsiyoneldir ve gerekçeyi somutlaştırır.
+   */
   onPhotoReject?: (photoId: string, reason: RejectionReason, note?: string) => void
 }
 
@@ -876,13 +973,51 @@ export interface PaginationProps {
 }
 
 export interface RejectionReasonPickerProps {
+  /**
+   * Seçili gerekçeler. Kontrollüdür: seçimi picker değil çağıran tutar — aynı
+   * seçim karar dialog'unda ve ekranın özetinde birden görünebilir.
+   */
   value: RejectionReason[]
+  /**
+   * Moderatörün notu. Boş string boş alan demektir.
+   *
+   * Gerekçe ile not birlikte alınır çünkü ikisi tek bir karara gider: gerekçe
+   * *hangi kural*, not *bu ilanda tam olarak ne* sorusunu cevaplar. "Yanıltıcı
+   * Bilgi" tek başına ilan sahibine neyi düzelteceğini söylemez.
+   */
   note: string
+  /**
+   * - `cards`: her gerekçe açıklamasıyla birlikte kart. Kararın asıl verildiği
+   *   yer — moderatör "Belge Uyumsuzluğu" ile "Yetki Belgesi Eksik" farkını
+   *   ancak açıklamayı okuyarak seçer.
+   * - `list`: açıklamasız, sıkışık liste. Dialog gibi dar alanlarda.
+   * - `compactSelect`: tek satırlık çoklu seçim kutusu. Toolbar ve satır içi.
+   *
+   * @default 'cards'
+   */
   variant?: 'cards' | 'list' | 'compactSelect'
+  /**
+   * En az bir gerekçe zorunlu olduğunu işaretler ve alanı `*` ile gösterir.
+   *
+   * Zorunluluğu **denetlemez**: seçimin yeterli olup olmadığına karar veren ve
+   * gönderimi kapatan, kararın sahibi olan üst katmandır
+   * (`isModerationDecisionComplete`). Picker yalnız işareti gösterir.
+   *
+   * @default false
+   */
   required?: boolean
+  /**
+   * Tüm alanları devre dışı bırakır — genelde karar gönderilirken. Yetki için
+   * kullanmayın: yetkisiz kullanıcıya picker hiç render edilmez.
+   *
+   * @default false
+   */
   disabled?: boolean
+  /** Doğrulama hatası. Verilirse gerekçe grubunun altında kırmızı gösterilir. */
   error?: string
+  /** Gerekçe seçimi değiştiğinde yeni listenin tamamıyla çalışır. */
   onValueChange: (reasons: RejectionReason[]) => void
+  /** Not her tuş vuruşunda bildirilir; geciktirme çağıranın işi. */
   onNoteChange: (note: string) => void
 }
 
@@ -1077,9 +1212,34 @@ export interface ReportCardProps {
 }
 
 export interface ModerationHistoryProps {
+  /**
+   * Gösterilecek olaylar. Component bunları **kendisi tarihe göre eskiden yeniye
+   * sıralar**: geçmiş sırasız okunamaz ve sıralamayı her çağırana bırakmak, aynı
+   * geçmişin iki ekranda ters görünmesi demekti.
+   */
   events: ModerationEvent[]
+  /**
+   * - `timeline`: dikey zaman çizgisi. İlan detayında; "ne oldu, sonra ne oldu".
+   * - `table`: sütunlu tablo. Tarama ve karşılaştırma; audit'e yakın okuma.
+   * - `compact`: tek satırlık özetler. Yan panel ve dar kolon.
+   *
+   * @default 'timeline'
+   */
   variant?: 'timeline' | 'table' | 'compact'
+  /**
+   * Olaylar yüklenirken skeleton gösterir.
+   * @default false
+   */
   loading?: boolean
+  /**
+   * Boş durumu zorlar.
+   *
+   * `events` zaten boşsa gerekmez — boş dizi kendiliğinden boş durumu verir.
+   * Bu bayrak, çağıranın "veri geldi ve gerçekten boş" ile "henüz sormadım"
+   * ayrımını yapabildiği yerler içindir.
+   *
+   * @default false
+   */
   empty?: boolean
 }
 
@@ -1112,17 +1272,42 @@ export interface PromotionFlagsPanelProps {
   onChange?: (flags: PromotionFlags) => void
 }
 
-export interface AutomatedCheckItem {
-  id: string
-  label: string
-  status: 'passed' | 'warning' | 'failed'
-  message: string
-  score?: number
-}
-
+// Brifingden sapma: `AutomatedCheckItem` kaldırıldı, panel domain tipini
+// (`AutomatedCheckResult`) alıyor. Kullanıcı onayladı.
+//
+// Gerekçe: brifingin kendi domain modelinde `ModerationSummary.automatedChecks`
+// zaten `AutomatedCheckResult[]`. Panel ayrı bir DTO isteseydi her ekran ilanın
+// gerçek sonuçlarını el ile o şekle çevirecekti — ve çeviri iki bilgiyi
+// bozuyordu: `AutomatedCheckItem.status` string birleşimiydi (enum değil, yani
+// `AutomatedCheckResultStatus` ile eşleşmesi derleyiciye görünmüyordu) ve
+// `label` DTO'nun içindeydi; oysa etiket `domain/labels.ts`'in işi —
+// component'e etiket taşıtmak "iş kuralları domain'de" kuralını deler ve aynı
+// kontrolün adı kuyrukta başka, detayda başka yazılabilirdi.
+//
+// Kaybedilen bir şey yok: `id` yerine `code` benzersiz anahtar, `label` yerine
+// `AUTOMATED_CHECK_LABEL[code]`, `status` yerine aynı üç değerin enum'u.
+// `checkedAt` ise kazanç — kontrolün ne zaman çalıştığı artık gösterilebiliyor.
 export interface AutomatedChecksPanelProps {
-  items: AutomatedCheckItem[]
+  /**
+   * Kontrol sonuçları; `listing.moderation.automatedChecks` doğrudan geçilebilir.
+   *
+   * Sıra bozulmadan, geldiği gibi render edilir — sonuçların önem sırası
+   * sunucunun kararıdır.
+   */
+  items: AutomatedCheckResult[]
+  /**
+   * - `list`: kod, durum ve mesaj alt alta. Varsayılan okuma.
+   * - `cards`: her kontrol kendi kartında; skor ve zaman damgası da görünür.
+   * - `summary`: tek satır özet ("6 geçti, 1 uyarı, 1 başarısız") + yalnız
+   *   sorunlular. Kuyrukta karar hızı için.
+   *
+   * @default 'list'
+   */
   variant?: 'list' | 'cards' | 'summary'
+  /**
+   * Kontroller çalışırken skeleton gösterir.
+   * @default false
+   */
   loading?: boolean
 }
 
