@@ -71,25 +71,63 @@ iddialarında.
 story'lerinde `renderMobileCard`/`rowLabel` gibi callback'leri `args` yerine `render`
 içinde ver, yoksa `row` tipi `{ id: string }`de kalır.
 
+**`meta.args`'a `fn()` koyman prop'u o story dosyasında zorunlu kılar.**
+`exactOptionalPropertyTypes` açıkken meta'daki `onRetry: fn()` prop'un tipini
+`Mock`'a sabitler; "bu handler yok" demek isteyen story `onRetry: undefined`
+yazamaz (TS2375) ve `undefined` geçmenin başka yolu da yoktur. Handler'ın
+**yokluğu bir durumsa** (ErrorState'in tekrar denenemeyen hatası, `onApply`'siz
+FilterBar) meta'ya koyma — ihtiyacı olan story kendi versin.
+
+**Etiketi `visibility: hidden` ile gizleme — erişilebilir ad kaybolur.**
+Erişilebilir ad hesabı `visibility: hidden` alt ağacını yok sayar. Button'ın
+yükleniyor durumu tam olarak bunu yapıyordu: buton `loading` iken **adsız**
+kalıyor, ekran okuyucu "düğme, meşgul" deyip hangi düğme olduğunu söylemiyordu.
+Testler geçiyordu, çünkü hiçbiri yüklenen butonu **adıyla** sorgulamıyordu.
+Yerini koruyarak gizlemek gerekiyorsa `opacity: 0` kullan — metin erişilebilirlik
+ağacında kalır. (IconButton etkilenmiyordu: adı `aria-label`'dan geliyor.)
+Regresyon testi: `Button.stories.tsx` → `LoadingKeepsAccessibleName`.
+
+**Global reset yalnız `body`'nin margin'ini sıfırlıyor.** Yazdığın `<p>`,
+`<h*>`, `<fieldset>` tarayıcı varsayılanlarını taşır; grid/flex kabında bu
+margin `gap` token'ının üstüne biner ve dikey ritmi token'lar değil tarayıcı
+belirler. EmptyState'te `compact` ile `default` arasındaki fark tamamen bu
+yüzden kaybolmuştu — testler bunu görmez, ekran görüntüsü görür.
+
+**Base UI `NumberField`'ın yerel ayarı varsayılan olarak kullanıcının
+makinesidir.** `locale` verilmezse aynı değer Türkçe makinede `2.000.000`,
+İngilizce makinede `2,000,000` görünür — Türkçede virgül ondalık ayırıcı olduğu
+için fiyat milyon katı yanlış okunabilir, üstelik CI/Chromatic çıktısı runner'ın
+diline göre değişir. NumberInput ve CurrencyInput `locale="tr-TR"` sabitliyor;
+yeni bir Intl tüketicisi eklersen aynısını yap (`formatCurrency` de `tr-TR`
+sabitliyor — aynı ekranda iki biçim olmamalı).
+
 ## Brifingden onaylanmış sapmalar
 
 Bunlar tartışıldı ve kullanıcı onayladı. Geri alma.
 
-| Konu                         | Sapma                                                         | Gerekçe                                                                                |
-| ---------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `erasableSyntaxOnly`         | Kapatıldı                                                     | `domain.ts` enum kullanıyor, enum çalışma anında kod üretiyor (TS1294)                 |
-| `value?: T`                  | `value?: T \| undefined`                                      | `onValueChange` `undefined` veriyordu ama `value` geri almıyordu — gidiş-dönüş kırıktı |
-| `CheckboxProps.onChange`     | `onCheckedChange`                                             | Switch ile tutarlı; Base UI zaten `ChangeEvent` üretmiyor                              |
-| `InputProps`                 | `ref` eklendi                                                 | SearchInput temizleme sonrası odağı geri vermeli                                       |
-| `CheckboxProps`              | `hideLabel` eklendi                                           | Tablo satırında etiket her satırda tekrar edip tabloyu okunmaz yapıyordu               |
-| `DataTableProps`             | `rowLabel` eklendi                                            | Etiketsiz kullanıcı 12 satırda da aynı metni duyar                                     |
-| `InputProps`/`TextareaProps` | `required` native'den çıkarıldı                               | `exactOptionalPropertyTypes` ile TS2320 çakışması                                      |
-| `ListingFilterValues`        | `string[]` → `SellerType[]`/`PromotionType[]`                 | Brifingin kendi tip güvenliği kuralı                                                   |
-| Fixture opsiyonel tarihleri  | Koşullu spread                                                | Brifingin kodu `exactOptionalPropertyTypes` ile derlenmiyordu (TS2375)                 |
-| Durum renkleri               | `paused`→nötr-200, `expired`→warning-100, `archived`→nötr-300 | 8 durum yalnız 6 farklı zemin üretiyordu                                               |
-| `AdminPermission`            | `ThemeSetDefault` eklendi                                     | Matris tema seçimi ile sistem varsayılanını ayırmış, enum ayırmamıştı                  |
-| DTCG token JSON              | Eklenmedi                                                     | Tasarımcı/Figma yok; gelince Style Dictionary ile eklenir                              |
-| `Button.test.tsx`            | Yazılmıyor                                                    | addon-vitest story testleri aynı işi yapıyor                                           |
+Ayrıksı iki satır: **`FilterValue` ve `FilterDefinition` sapmaları kullanıcıya
+sorulmadan, Faz 2'de karar verildi** — brifing bu iki noktada kendi kendisiyle
+çelişiyordu ve FilterBar onlarsız yazılamıyordu (gerekçeler tabloda). Geri alma,
+ama kullanıcı görünce itiraz ederse tartışmaya açık; diğer satırlar gibi
+kapanmış sayma.
+
+| Konu                         | Sapma                                                         | Gerekçe                                                                                                                                                                                                  |
+| ---------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `erasableSyntaxOnly`         | Kapatıldı                                                     | `domain.ts` enum kullanıyor, enum çalışma anında kod üretiyor (TS1294)                                                                                                                                   |
+| `value?: T`                  | `value?: T \| undefined`                                      | `onValueChange` `undefined` veriyordu ama `value` geri almıyordu — gidiş-dönüş kırıktı                                                                                                                   |
+| `CheckboxProps.onChange`     | `onCheckedChange`                                             | Switch ile tutarlı; Base UI zaten `ChangeEvent` üretmiyor                                                                                                                                                |
+| `InputProps`                 | `ref` eklendi                                                 | SearchInput temizleme sonrası odağı geri vermeli                                                                                                                                                         |
+| `CheckboxProps`              | `hideLabel` eklendi                                           | Tablo satırında etiket her satırda tekrar edip tabloyu okunmaz yapıyordu                                                                                                                                 |
+| `DataTableProps`             | `rowLabel` eklendi                                            | Etiketsiz kullanıcı 12 satırda da aynı metni duyar                                                                                                                                                       |
+| `InputProps`/`TextareaProps` | `required` native'den çıkarıldı                               | `exactOptionalPropertyTypes` ile TS2320 çakışması                                                                                                                                                        |
+| `ListingFilterValues`        | `string[]` → `SellerType[]`/`PromotionType[]`                 | Brifingin kendi tip güvenliği kuralı                                                                                                                                                                     |
+| Fixture opsiyonel tarihleri  | Koşullu spread                                                | Brifingin kodu `exactOptionalPropertyTypes` ile derlenmiyordu (TS2375)                                                                                                                                   |
+| Durum renkleri               | `paused`→nötr-200, `expired`→warning-100, `archived`→nötr-300 | 8 durum yalnız 6 farklı zemin üretiyordu                                                                                                                                                                 |
+| `AdminPermission`            | `ThemeSetDefault` eklendi                                     | Matris tema seçimi ile sistem varsayılanını ayırmış, enum ayırmamıştı                                                                                                                                    |
+| `FilterValue`                | `NumberRange` eklendi                                         | Brifing `numberRange` filtre tipi tanımlamış ama birleşimde aralık üyesi yok; tek `number` "en az 500.000" ile "en çok 500.000"ü ayıramıyor. `dateRange`'in `DateRange`'i zaten vardı, bu onun simetriği |
+| `FilterDefinition`           | `searchable` eklenmedi, 8 seçenek eşiği kondu                 | Brifing il/ilçe/mahalle'nin aranabilir olmasını şart koşuyor ama bayrak tanımlamamış; eşik (`ARAMA_ESIGI`) sözleşmeyi büyütmeden çözüyor                                                                 |
+| DTCG token JSON              | Eklenmedi                                                     | Tasarımcı/Figma yok; gelince Style Dictionary ile eklenir                                                                                                                                                |
+| `Button.test.tsx`            | Yazılmıyor                                                    | addon-vitest story testleri aynı işi yapıyor                                                                                                                                                             |
 
 ## Teknoloji
 
@@ -126,13 +164,57 @@ toolbar'dan üç temayı da dene.
 ## Durum ve sırada ne var
 
 **Faz 1 bitti:** 26/26 primitive.
-**Faz 2 sürüyor:** 3/29 composite (StatusBadge, ListingCard, DataTable).
+**Faz 2 sürüyor:** 9/29 composite (StatusBadge, ListingCard, DataTable, FilterBar,
+Pagination, EmptyState, ErrorState, ConfirmDialog, BulkActionBar).
 
-Sırada: `FilterBar`, `Pagination`, `EmptyState`, `ErrorState`, `ConfirmDialog`,
-`BulkActionBar` → moderasyon grubu (`ModerationActionBar`, `RejectionReasonPicker`,
-`ImageGallery`, `AutomatedChecksPanel`, `ModerationHistory`) → `AppShell`/`SidebarNav`/`TopBar`.
+Sırada: moderasyon grubu (`ModerationActionBar`, `RejectionReasonPicker`,
+`ImageGallery`, `AutomatedChecksPanel`, `ModerationHistory`) → `AppShell`/`SidebarNav`/`TopBar`
+→ dashboard (`StatCard`, `ChartCard`) → kalanlar.
 
 Eksik fixture'lar: `users.ts`, `reports.ts`, `dashboard.ts`, `moderationEvents.ts`.
+
+### Faz 1'de düzeltilen üç hata (Faz 2 sırasında bulundu)
+
+Üçü de testler geçerken bozuktu; ikisi ancak ekran görüntüsüyle görüldü.
+Gerekçeleri "tuzaklar" bölümünde:
+
+- `Button` — `loading` iken erişilebilir adı kayboluyordu (`visibility` → `opacity`).
+- `NumberInput` / `CurrencyInput` — sayı biçimi kullanıcının makinesine göre
+  değişiyordu (`locale="tr-TR"` sabitlendi).
+- `Modal` — gövdesiz kullanımda başlıkla footer arasında boş bant kalıyordu
+  (`body:empty` dolgusu sıfırlandı; ConfirmDialog'un ihtiyacı).
+
+### Bilinen borç: prop JSDoc'ları — 144 prop, 24 component
+
+"Prop JSDoc'u zorunlu" kuralı Faz 1'de sessizce delinmiş. Ölçmenin yolu:
+
+```bash
+pnpm build-storybook   # sonra manifest'i say (proplar `reactDocgen.props` altında)
+node -e "const m=JSON.parse(require('fs').readFileSync('./storybook-static/manifests/components.json','utf8'));
+for (const c of Object.values(m.components)) { const p=Object.entries(c.reactDocgen?.props ?? {});
+if (!p.length) continue; const e=p.filter(([,x])=>(x.description??'')==='').map(([k])=>k);
+if (e.length) console.log(c.name.padEnd(16), (p.length-e.length)+'/'+p.length, e.join(', ')) }"
+```
+
+**Tam olanlar:** Faz 2'nin altısı + `Badge`, `Button`, `DataTable`, `StatusBadge`.
+
+**Kalan:** 144 prop / 24 component. En yüksek kaldıraç, sırasıyla:
+
+1. **`FieldMetaProps`'a JSDoc yaz — dört yorum, dokuz component.** `label`,
+   `helperText`, `error`, `required` dokuz component'te birden eksik görünüyor
+   ama kaynak tek: o interface'in kendisi belgesiz. Tek dosyada dört yorum, 36
+   prop kapanır.
+2. **`disabled` 13 component'te eksik.** Her birinde aynı kural tekrarlanacak:
+   yetki için kullanılmaz, yetkisiz kullanıcıya kontrol hiç render edilmez.
+   `Button.disabled`'ın JSDoc'u örnek alınabilir.
+3. Kalan tekil proplar (`size`, `variant`, callback'ler) component component.
+
+**Native attribute'lar da sayılıyor.** `Button`/`IconButton`'da `disabled` ve
+`type`, ButtonHTMLAttributes'tan geliyor ama component imzasında varsayılanları
+olduğu için react-docgen onları prop sayıyor — belgelenmezse Controls'ta boş
+görünüyorlar. Belgelemek için interface'te yeniden bildir; tipi native'le
+birebir aynı yaz (`disabled?: boolean | undefined`), yoksa
+`exactOptionalPropertyTypes` TS2320 verir (bkz. `InputProps.required` sapması).
 
 ## Karar bekleyenler — UYDURMA, SOR
 
