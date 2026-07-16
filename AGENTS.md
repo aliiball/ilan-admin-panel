@@ -93,6 +93,16 @@ margin `gap` token'ının üstüne biner ve dikey ritmi token'lar değil tarayı
 belirler. EmptyState'te `compact` ile `default` arasındaki fark tamamen bu
 yüzden kaybolmuştu — testler bunu görmez, ekran görüntüsü görür.
 
+Faz 2'de aynı resetin iki uzantısı daha çıktı:
+
+- **`<ul>`/`<ol>` ayrıca 40 piksel `padding-inline-start` taşır.** Yalnız
+  margin'i sıfırlamak yetmez; liste sağa kaymış görünür. Semantik listeye
+  ihtiyacın varsa (moderasyon geçmişi sıralıdır, `<ol>` doğru element)
+  `listStyle: 'none'` + `margin: 0` + `padding: 0` üçünü birden yaz.
+- **`<fieldset>`'in `min-inline-size: min-content` varsayılanı küçülmeyi
+  reddeder.** Spec'ten gelir ve grid/flex kabında 320 pikselde en uzun
+  çocuğu kadar genişleyip sayfayı yatay kaydırtır. `minInlineSize: 0` şart.
+
 **Base UI `NumberField`'ın yerel ayarı varsayılan olarak kullanıcının
 makinesidir.** `locale` verilmezse aynı değer Türkçe makinede `2.000.000`,
 İngilizce makinede `2,000,000` görünür — Türkçede virgül ondalık ayırıcı olduğu
@@ -101,33 +111,63 @@ diline göre değişir. NumberInput ve CurrencyInput `locale="tr-TR"` sabitliyor
 yeni bir Intl tüketicisi eklersen aynısını yap (`formatCurrency` de `tr-TR`
 sabitliyor — aynı ekranda iki biçim olmamalı).
 
+**Aynı tuzağın tarih hâli daha kötü: saat dilimi de makinenin.** `Intl`'e
+`timeZone` verilmezse `2026-05-03T12:00:00+03:00` İstanbul'da `12:00`, UTC
+runner'da `09:00`, Los Angeles'ta **`2 May 23:00`** görünür — yalnız saat değil
+_gün_ kayar. Moderasyon geçmişinde bu, "karar hangi gün verildi" sorusunu
+makineye göre farklı cevaplar. `utils/formatDateTime.ts` hem `tr-TR` hem
+`Europe/Istanbul` sabitliyor; tarih gösteren her yer oradan geçmeli.
+
+**Göreli zaman ("3 gün önce") yazma.** Hesabı "şimdi"ye dayanır: aynı story
+dün "3 gün önce", bugün "4 gün önce" yazar. Brifing fixture'ların
+deterministik olmasını şart koşuyor ve göreli zaman bunu tek başına bozar —
+Chromatic her gün fark üretir, gerçek regresyon o gürültüde kaybolur.
+Gerekirse `now` prop'la dışarıdan verilmeli; component saati kendi okumamalı.
+
+**`toBeDisabled()` Base UI kontrollerinde yalan söyler.** Checkbox bir
+`<span role="checkbox">` render ediyor ve devre dışılığını `aria-disabled`
+ile bildiriyor; `toBeDisabled()` yalnız native `disabled` attribute'unu tanır
+ve kutu gerçekten kilitliyken de düşer. Yani matcher yanlıştır, component
+değil — `toHaveAttribute('aria-disabled', 'true')` kullan. Gerçek
+`<button>`/`<textarea>`'da (Button, Textarea) native matcher doğru araç.
+
+**Prop tipi olmayan import'larda da `.tsx` içinde göreli yol kullan.** Ev
+kuralı: `@/` yalnız `.css.ts`'te (`@/tokens/contract.css`). Component
+dosyalarının tamamı göreli yol kullanıyor; react-docgen'in `@/`'yi çözememesi
+zaten bilinen tuzak, kuralı dosya bazında değil dizin bazında tutmak onu
+tamamen ortadan kaldırıyor.
+
 ## Brifingden onaylanmış sapmalar
 
 Bunlar tartışıldı ve kullanıcı onayladı. Geri alma.
 
-Ayrıksı iki satır: **`FilterValue` ve `FilterDefinition` sapmaları kullanıcıya
-sorulmadan, Faz 2'de karar verildi** — brifing bu iki noktada kendi kendisiyle
-çelişiyordu ve FilterBar onlarsız yazılamıyordu (gerekçeler tabloda). Geri alma,
-ama kullanıcı görünce itiraz ederse tartışmaya açık; diğer satırlar gibi
+Ayrıksı satırlar: **`FilterValue`, `FilterDefinition` ve
+`PHOTO_REJECTION_REASONS` kullanıcıya sorulmadan, Faz 2'de karar verildi** —
+brifing ilk ikisinde kendi kendisiyle çelişiyordu ve FilterBar onlarsız
+yazılamıyordu; üçüncüsünde ise hiç konuşmamıştı (gerekçeler tabloda). Geri
+alma, ama kullanıcı görünce itiraz ederse tartışmaya açık; diğer satırlar gibi
 kapanmış sayma.
 
-| Konu                         | Sapma                                                         | Gerekçe                                                                                                                                                                                                  |
-| ---------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `erasableSyntaxOnly`         | Kapatıldı                                                     | `domain.ts` enum kullanıyor, enum çalışma anında kod üretiyor (TS1294)                                                                                                                                   |
-| `value?: T`                  | `value?: T \| undefined`                                      | `onValueChange` `undefined` veriyordu ama `value` geri almıyordu — gidiş-dönüş kırıktı                                                                                                                   |
-| `CheckboxProps.onChange`     | `onCheckedChange`                                             | Switch ile tutarlı; Base UI zaten `ChangeEvent` üretmiyor                                                                                                                                                |
-| `InputProps`                 | `ref` eklendi                                                 | SearchInput temizleme sonrası odağı geri vermeli                                                                                                                                                         |
-| `CheckboxProps`              | `hideLabel` eklendi                                           | Tablo satırında etiket her satırda tekrar edip tabloyu okunmaz yapıyordu                                                                                                                                 |
-| `DataTableProps`             | `rowLabel` eklendi                                            | Etiketsiz kullanıcı 12 satırda da aynı metni duyar                                                                                                                                                       |
-| `InputProps`/`TextareaProps` | `required` native'den çıkarıldı                               | `exactOptionalPropertyTypes` ile TS2320 çakışması                                                                                                                                                        |
-| `ListingFilterValues`        | `string[]` → `SellerType[]`/`PromotionType[]`                 | Brifingin kendi tip güvenliği kuralı                                                                                                                                                                     |
-| Fixture opsiyonel tarihleri  | Koşullu spread                                                | Brifingin kodu `exactOptionalPropertyTypes` ile derlenmiyordu (TS2375)                                                                                                                                   |
-| Durum renkleri               | `paused`→nötr-200, `expired`→warning-100, `archived`→nötr-300 | 8 durum yalnız 6 farklı zemin üretiyordu                                                                                                                                                                 |
-| `AdminPermission`            | `ThemeSetDefault` eklendi                                     | Matris tema seçimi ile sistem varsayılanını ayırmış, enum ayırmamıştı                                                                                                                                    |
-| `FilterValue`                | `NumberRange` eklendi                                         | Brifing `numberRange` filtre tipi tanımlamış ama birleşimde aralık üyesi yok; tek `number` "en az 500.000" ile "en çok 500.000"ü ayıramıyor. `dateRange`'in `DateRange`'i zaten vardı, bu onun simetriği |
-| `FilterDefinition`           | `searchable` eklenmedi, 8 seçenek eşiği kondu                 | Brifing il/ilçe/mahalle'nin aranabilir olmasını şart koşuyor ama bayrak tanımlamamış; eşik (`ARAMA_ESIGI`) sözleşmeyi büyütmeden çözüyor                                                                 |
-| DTCG token JSON              | Eklenmedi                                                     | Tasarımcı/Figma yok; gelince Style Dictionary ile eklenir                                                                                                                                                |
-| `Button.test.tsx`            | Yazılmıyor                                                    | addon-vitest story testleri aynı işi yapıyor                                                                                                                                                             |
+| Konu                         | Sapma                                                         | Gerekçe                                                                                                                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `erasableSyntaxOnly`         | Kapatıldı                                                     | `domain.ts` enum kullanıyor, enum çalışma anında kod üretiyor (TS1294)                                                                                                                                                    |
+| `value?: T`                  | `value?: T \| undefined`                                      | `onValueChange` `undefined` veriyordu ama `value` geri almıyordu — gidiş-dönüş kırıktı                                                                                                                                    |
+| `CheckboxProps.onChange`     | `onCheckedChange`                                             | Switch ile tutarlı; Base UI zaten `ChangeEvent` üretmiyor                                                                                                                                                                 |
+| `InputProps`                 | `ref` eklendi                                                 | SearchInput temizleme sonrası odağı geri vermeli                                                                                                                                                                          |
+| `CheckboxProps`              | `hideLabel` eklendi                                           | Tablo satırında etiket her satırda tekrar edip tabloyu okunmaz yapıyordu                                                                                                                                                  |
+| `DataTableProps`             | `rowLabel` eklendi                                            | Etiketsiz kullanıcı 12 satırda da aynı metni duyar                                                                                                                                                                        |
+| `InputProps`/`TextareaProps` | `required` native'den çıkarıldı                               | `exactOptionalPropertyTypes` ile TS2320 çakışması                                                                                                                                                                         |
+| `ListingFilterValues`        | `string[]` → `SellerType[]`/`PromotionType[]`                 | Brifingin kendi tip güvenliği kuralı                                                                                                                                                                                      |
+| Fixture opsiyonel tarihleri  | Koşullu spread                                                | Brifingin kodu `exactOptionalPropertyTypes` ile derlenmiyordu (TS2375)                                                                                                                                                    |
+| Durum renkleri               | `paused`→nötr-200, `expired`→warning-100, `archived`→nötr-300 | 8 durum yalnız 6 farklı zemin üretiyordu                                                                                                                                                                                  |
+| `AdminPermission`            | `ThemeSetDefault` eklendi                                     | Matris tema seçimi ile sistem varsayılanını ayırmış, enum ayırmamıştı                                                                                                                                                     |
+| `FilterValue`                | `NumberRange` eklendi                                         | Brifing `numberRange` filtre tipi tanımlamış ama birleşimde aralık üyesi yok; tek `number` "en az 500.000" ile "en çok 500.000"ü ayıramıyor. `dateRange`'in `DateRange`'i zaten vardı, bu onun simetriği                  |
+| `FilterDefinition`           | `searchable` eklenmedi, 8 seçenek eşiği kondu                 | Brifing il/ilçe/mahalle'nin aranabilir olmasını şart koşuyor ama bayrak tanımlamamış; eşik (`ARAMA_ESIGI`) sözleşmeyi büyütmeden çözüyor                                                                                  |
+| DTCG token JSON              | Eklenmedi                                                     | Tasarımcı/Figma yok; gelince Style Dictionary ile eklenir                                                                                                                                                                 |
+| `Button.test.tsx`            | Yazılmıyor                                                    | addon-vitest story testleri aynı işi yapıyor                                                                                                                                                                              |
+| `AutomatedCheckItem`         | Silindi; panel `AutomatedCheckResult[]` alıyor                | Kullanıcı onayladı. `ModerationSummary.automatedChecks` zaten o tip; ayrı DTO her ekrana elle çeviri yaptırıp `status`'ü enum'dan string'e düşürüyor ve `label`'ı domain'den component'e taşıyordu                        |
+| `PHOTO_REJECTION_REASONS`    | Fotoğraf reddine 7 gerekçelik alt küme                        | **Sorulmadan karar verildi.** Brifing fotoğraf reddinde de `RejectionReason`'ı kullanıyor ama alt küme tanımlamamış; "Fiyat Hatası" veya "Yanlış Kategori" bir fotoğrafın suçu olamaz, 15 seçenek yanlış gerekçe seçtirir |
+| `BaseFixtureArgs.revision`   | Eklendi (varsayılan 1)                                        | `moderationEvents.ts`'te `edited` olayı olan ilan revizyon 1'de kalamaz; fixture kendi geçmişiyle çelişemez                                                                                                               |
 
 ## Teknoloji
 
@@ -164,14 +204,33 @@ toolbar'dan üç temayı da dene.
 ## Durum ve sırada ne var
 
 **Faz 1 bitti:** 26/26 primitive.
-**Faz 2 sürüyor:** 9/29 composite (StatusBadge, ListingCard, DataTable, FilterBar,
-Pagination, EmptyState, ErrorState, ConfirmDialog, BulkActionBar).
+**Faz 2 sürüyor:** 14/29 composite (StatusBadge, ListingCard, DataTable, FilterBar,
+Pagination, EmptyState, ErrorState, ConfirmDialog, BulkActionBar + moderasyon grubu:
+ModerationActionBar, RejectionReasonPicker, ImageGallery, AutomatedChecksPanel,
+ModerationHistory).
 
-Sırada: moderasyon grubu (`ModerationActionBar`, `RejectionReasonPicker`,
-`ImageGallery`, `AutomatedChecksPanel`, `ModerationHistory`) → `AppShell`/`SidebarNav`/`TopBar`
-→ dashboard (`StatCard`, `ChartCard`) → kalanlar.
+Sırada: `AppShell`/`SidebarNav`/`TopBar` → dashboard (`StatCard`, `ChartCard`) → kalanlar.
 
-Eksik fixture'lar: `users.ts`, `reports.ts`, `dashboard.ts`, `moderationEvents.ts`.
+Eksik fixture'lar: `users.ts`, `reports.ts`, `dashboard.ts`.
+
+### Moderasyon grubunda kurulan yapılar
+
+- **`domain/moderationActions.ts`** — brifing 1.2'nin geçiş tablosunun beş
+  moderasyon eylemine düşen kesiti: hangi eylem hangi durumda görünür
+  (`allowedFrom`), hangisi gerekçe/not zorunlu kılar. Yetki boyutu burada
+  **yok**; onu `ModerationCapabilities` taşıyor ve `ROLE_PERMISSIONS` ile
+  birebir örtüşüyor. Bir eylem iki kapıdan (yetki + durum) geçmeden görünmez.
+- **`utils/formatDateTime.ts`** — `tr-TR` + `Europe/Istanbul` sabit.
+- **`fixtures/moderationEvents.ts`** — dört zincir, hepsi gerçek ilan
+  fixture'larının kendi tarihlerine bağlı (`approved` olayı ilanın
+  `publishedAt`'i ile aynı an). On beş `ModerationEventType` değerinin hepsi
+  kapsanıyor; `EveryEventTypeRenders` story'si bunu ölçüyor.
+- **ModerationActionBar kararı kendi topluyor.** `ModerationDecisionPayload`
+  gerekçe ve not istiyor, dolayısıyla buton doğrudan handler'ı çağıramaz: dialog
+  açar, `RejectionReasonPicker` ile toplar. Onay/arşivde alan yok ama dialog
+  yine açılır (brifing 2.4: karar öncesi doğrulama zorunlu). Dialog onayla
+  kapanır — sözleşmede hata kanalı yok, sonucu sayfanın toast'ı bildirir; taslak
+  state'te kalır ki başarısız kararda not kaybolmasın.
 
 ### Faz 1'de düzeltilen üç hata (Faz 2 sırasında bulundu)
 
@@ -196,9 +255,12 @@ if (!p.length) continue; const e=p.filter(([,x])=>(x.description??'')==='').map(
 if (e.length) console.log(c.name.padEnd(16), (p.length-e.length)+'/'+p.length, e.join(', ')) }"
 ```
 
-**Tam olanlar:** Faz 2'nin altısı + `Badge`, `Button`, `DataTable`, `StatusBadge`.
+**Tam olanlar (15):** Faz 2'nin altısı + `Badge`, `Button`, `DataTable`,
+`StatusBadge` + moderasyon grubunun beşi.
 
-**Kalan:** 144 prop / 24 component. En yüksek kaldıraç, sırasıyla:
+**Kalan: 144 prop / 24 component — Faz 2'de değişmedi.** Moderasyon grubu borcu
+büyütmedi (34 prop, hepsi belgeli) ama küçültmedi de: borç Faz 1
+primitive'lerinde duruyor. En yüksek kaldıraç, sırasıyla:
 
 1. **`FieldMetaProps`'a JSDoc yaz — dört yorum, dokuz component.** `label`,
    `helperText`, `error`, `required` dokuz component'te birden eksik görünüyor
@@ -224,12 +286,14 @@ sınırlı olduğunu söylemedi.** Brifingin matrisi üç yerde "Sınırlı" diy
 `icerikDenetcisi`'nin şikayet triage'ı. `RolePermissionMatrix`'e gelmeden önce
 "hangi alanlar?" diye sor.
 
-**`AutomatedChecksPanel`** domain tipini almalı (`AutomatedCheckResult[]`), brifingin
-`AutomatedCheckItem`'ını değil — kullanıcı onayladı. Etiketler `domain/labels.ts`'e
-eklenecek.
-
 **`AsyncState`** `partialSuccess` ve `unauthorized` ifade edemiyor ama Faz 3'ün story
 matrisi ikisini de zorunlu tutuyor. Ekranlara gelince çözülmeli.
+
+**Revizyon çakışması hâlâ ekranın sorunu.** ModerationActionBar çakışmayı
+tespit etmiyor, tespit _edilebilir_ kılıyor: kararı `expectedRevision` ile
+damgalıyor. Brifing "revision conflict ayrı bir UI durumu olmalıdır" diyor ama
+ne çubuğun ne de `ListingReviewPanelProps`'un bir hata kanalı var — Faz 3'te
+`AsyncState` ile birlikte çözülmeli.
 
 **Chromatic** ücretsiz planla bu spesifikasyon **matematiksel olarak çalışmıyor**:
 ~500 story × 3 tema × 2 viewport = 3.000 snapshot/build, kota 5.000/ay. Org repo'su
