@@ -91,6 +91,33 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
    * @default false
    */
   fullWidth?: boolean
+  /**
+   * Butonu devre dışı bırakır.
+   *
+   * **Yetki için kullanmayın**: kullanıcının yetkisi yoksa buton `disabled`
+   * verilmez, hiç render edilmez — brifingin "geçersiz eylem sunulmamalıdır"
+   * kriteri budur. Bu prop, kullanıcının yapabileceği ama *şu an*
+   * yapamayacağı işler içindir: form eksik, sınırdaki sayfa, seçim boş.
+   *
+   * `loading` zaten devre dışı bırakır; ikisini birlikte vermeye gerek yok.
+   *
+   * Native attribute yeniden bildiriliyor çünkü react-docgen onu (component
+   * imzasında varsayılanı olduğu için) prop olarak sayıyor ve açıklamasız
+   * bırakılırsa Controls panelinde boş görünüyor.
+   *
+   * @default false
+   */
+  disabled?: boolean | undefined
+  /**
+   * Native buton tipi.
+   *
+   * Varsayılan bilerek `button`: HTML'in kendi varsayılanı `submit` ve bir formun
+   * içindeki her buton istemeden formu göndermiş olur. Form gönderen butonda
+   * açıkça `type="submit"` verin.
+   *
+   * @default 'button'
+   */
+  type?: 'submit' | 'reset' | 'button' | undefined
 }
 
 export interface IconButtonProps extends Omit<
@@ -508,8 +535,14 @@ export interface ColumnDef<T> {
 }
 
 export interface DataTableProps<T extends { id: string }> {
+  /**
+   * Gösterilecek satırlar; **sıralanmış ve sayfalanmış hâlde** gelir. Tablo veriyi
+   * çekmez, süzmez ve sıralamaz — yalnız gösterir ve niyeti dışarı bildirir.
+   */
   rows: T[]
+  /** Sütun tanımları, verilen sırayla render edilir. */
   columns: ColumnDef<T>[]
+  /** Satırın benzersiz anahtarı. Verilmezse `row.id` kullanılır. */
   rowKey?: (row: T) => string
   /**
    * Satır seçim kutusunun erişilebilir etiketi.
@@ -519,50 +552,211 @@ export interface DataTableProps<T extends { id: string }> {
    * Verilmezse satır numarasına düşülür — jenerik ama en azından benzersiz.
    */
   rowLabel?: (row: T) => string
+  /**
+   * Satır yüksekliği. `compact` aynı ekrana daha çok satır sığdırır ve uzun
+   * listelerde taramayı hızlandırır; dokunma hedefini küçülttüğü için mobilde
+   * `comfortable` tercih edilir.
+   *
+   * @default 'comfortable'
+   */
   density?: 'comfortable' | 'compact'
+  /**
+   * Satırların birbirinden nasıl ayrıldığı. `striped` çok sütunlu tabloda gözün
+   * satırı kaydırmasını önler.
+   *
+   * @default 'plain'
+   */
   visualStyle?: 'plain' | 'bordered' | 'striped'
+  /**
+   * Dar ekranda ne olacağı.
+   *
+   * - `scroll`: tablo yatay kaydırılır. Sütunların kendisi önemliyse (audit log).
+   * - `cards`: her satır karta dönüşür. Okunabilirlik önemliyse (ilan listesi).
+   *   `renderMobileCard` ile birlikte verilmelidir; verilmezse tablo görünümünde kalır.
+   *
+   * @default 'scroll'
+   */
   mobileMode?: 'scroll' | 'cards'
+  /**
+   * Başlık korunur, satırlar skeleton olur — veri gelince düzen zıplamaz.
+   * @default false
+   */
   loading?: boolean
+  /** Verilirse satırların yerine hata bloğu gösterilir ve `rows` yok sayılır. */
   error?: UiError
+  /**
+   * Kayıt yokken satırların yerine gösterilir. Verilmezse yalın bir "Kayıt
+   * bulunamadı" yazar; filtre sonucu boşsa `EmptyState` ile filtreyi temizleme
+   * eylemi geçilmelidir — boşluğun sebebi kullanıcının atacağı adımı değiştirir.
+   */
   emptyState?: ReactNode
+  /**
+   * Satır seçim kutularını ve başlıktaki "tümünü seç" kutusunu açar.
+   * @default false
+   */
   selectable?: boolean
+  /** Seçili satır anahtarları. Kontrollüdür: seçimi tablo değil çağıran tutar. */
   selectedIds?: string[]
+  /**
+   * Sıralı sütun ve yön. Yalnız görünümü belirler — sıralamayı tablo yapmaz,
+   * `onSortChange` ile bildirir ve sıralı veriyi `rows`'ta geri bekler.
+   */
   sort?: { columnId: string; direction: 'asc' | 'desc' }
+  /**
+   * Kaydırırken başlık üstte kalır. Uzun listede sütunun ne olduğu unutulmaz.
+   * @default false
+   */
   stickyHeader?: boolean
+  /** Seçim değiştiğinde yeni anahtar listesinin tamamıyla çalışır. */
   onSelectionChange?: (ids: string[]) => void
+  /**
+   * Sıralanabilir bir başlığa basıldığında çalışır. Aynı sütuna tekrar basmak
+   * yönü çevirir.
+   */
   onSortChange?: (sort: { columnId: string; direction: 'asc' | 'desc' }) => void
+  /**
+   * Satıra tıklandığında çalışır; verilirse satır tıklanabilir görünür. Seçim
+   * kutusuna tıklamak bunu tetiklemez.
+   */
   onRowClick?: (row: T) => void
+  /** `mobileMode="cards"` iken satırın kart görünümü. */
   renderMobileCard?: (row: T) => ReactNode
 }
 
-export type FilterValue = string | number | boolean | string[] | DateRange | null | undefined
+/**
+ * Sayısal aralık filtresinin değeri (`FilterDefinition.type === 'numberRange'`).
+ *
+ * Brifingden sapma: eklendi. Gerekçe: brifing `numberRange` filtre tipini
+ * tanımlıyor ama `FilterValue` birleşiminde aralık ifade edebilecek bir üye
+ * bırakmamış — tek bir `number` "en az 500.000" ile "en çok 500.000" arasındaki
+ * farkı taşıyamaz. `dateRange` için `DateRange` nesnesi zaten var; bu onun
+ * sayısal simetriğidir.
+ */
+export interface NumberRange {
+  min?: number
+  max?: number
+}
+
+export type FilterValue =
+  string | number | boolean | string[] | DateRange | NumberRange | null | undefined
 
 export interface FilterDefinition {
+  /** `values` sözlüğündeki anahtar. `onChange`'in ilk argümanı olarak geri döner. */
   id: string
+  /** Alanın görünür etiketi. `numberRange`'de grubun (fieldset) başlığı olur. */
   label: string
+  /**
+   * Hangi kontrolün render edileceğini ve `values[id]`'nin hangi şekli
+   * taşıyacağını belirler:
+   *
+   * - `text` → `string`, Input
+   * - `select` → `string`, tekli Select (temizlenebilir)
+   * - `multiSelect` → `string[]`, çip gösteren MultiSelect
+   * - `numberRange` → `NumberRange`, yan yana iki NumberInput
+   * - `dateRange` → `DateRange`, DateRangePicker
+   * - `boolean` → `boolean`, Switch
+   *
+   * Değer beklenen şekilde değilse alan boş kabul edilir, çökmez.
+   */
   type: 'text' | 'select' | 'multiSelect' | 'numberRange' | 'dateRange' | 'boolean'
+  /** `select` ve `multiSelect` için seçenekler. Diğer tiplerde yok sayılır. */
   options?: SelectOption[]
+  /** `text`, `select` ve `multiSelect` için boşken görünen metin. Etiket yerine geçmez. */
   placeholder?: string
 }
 
 export interface FilterBarProps {
+  /** Gösterilecek filtre alanları, verilen sırayla render edilir. */
   definitions: FilterDefinition[]
+  /**
+   * Filtrelerin güncel değerleri; `FilterDefinition.id` ile eşlenir.
+   *
+   * Component kontrollüdür ve kendi kopyasını tutmaz: değer buradan gelir,
+   * değişiklik `onChange` ile bildirilir.
+   */
   values: Record<string, FilterValue>
+  /**
+   * - `inline`: alanlar yatay sarmalı satırda. Liste ekranı toolbar'ı.
+   * - `stacked`: alanlar alt alta, tam genişlik. Dar kolon veya yan panel.
+   * - `drawer`: alanlar Drawer içinde; dışarıda yalnız sayaçlı bir tetikleyici
+   *   buton durur. Mobilde tercih edilir.
+   *
+   * @default 'inline'
+   */
   variant?: 'inline' | 'stacked' | 'drawer'
+  /**
+   * Rozette ve tetikleyicide gösterilen aktif filtre sayısı.
+   *
+   * Verilmezse `definitions` üzerinden hesaplanır: boş metin, boş dizi, `null`,
+   * `undefined`, boş aralık ve `false` aktif sayılmaz. Değer, alanın tipine göre
+   * daraltılarak sayılır — kutuda boş görünen bir alan sayaçta da boş sayılır.
+   *
+   * "Aktif"in tanımı ekrana göre değişiyorsa (varsayılan değerler aktif
+   * sayılmasın gibi) üst katman kendi sayısını geçer.
+   */
   activeFilterCount?: number
+  /**
+   * Seçenekler (il, ilçe, kategori) yüklenirken `select` ve `multiSelect`
+   * alanlarında spinner gösterir. Metin alanları yazılabilir kalır — seçenek
+   * beklerken yazmayı engellemenin sebebi yok.
+   *
+   * @default false
+   */
   loading?: boolean
+  /**
+   * Tüm alanları ve butonları devre dışı bırakır. Yetki için kullanmayın:
+   * kullanıcının yetkisi yoksa FilterBar hiç render edilmemelidir.
+   *
+   * @default false
+   */
   disabled?: boolean
+  /** Kayıtlı görünümün adı. Verilirse başlıkta rozet olarak gösterilir. */
   savedViewName?: string
+  /** Bir alan değiştiğinde çalışır. Anında çağrılır; geciktirme sayfa katmanının işidir. */
   onChange: (id: string, value: FilterValue) => void
+  /** "Temizle"ye basıldığında çalışır. Buton yalnız aktif filtre varken görünür. */
   onClear: () => void
+  /**
+   * Verilirse filtreler taslak sayılır ve "Uygula" butonu görünür; `onChange`
+   * taslağı, `onApply` commit'i bildirir. Verilmezse filtreler canlıdır.
+   */
   onApply?: () => void
+  /** Verilirse "Görünümü kaydet" butonu görünür ve ad soran satırı açar. */
   onSaveView?: (name: string) => void
 }
 
 export interface StatusBadgeProps {
+  /**
+   * Gösterilecek ilan durumu. Sekiz `ListingStatus` değerinin her birinin kendi
+   * zemini vardır; etiket `domain/labels.ts`'ten, renk `status` token'larından
+   * gelir — ikisi de component içine gömülmez.
+   */
   status: ListingStatus
+  /**
+   * Dolgu stili.
+   *
+   * - `solid`: en yüksek vurgu. Tek bir durumun öne çıkması gerekiyorsa.
+   * - `soft`: açık zemin, koyu metin. Yoğun listelerde tercih edilir — satır satır
+   *   tekrar eden rozet bağırmamalı.
+   * - `outline`: yalnız kenarlık. Rozet zaten renkli bir zeminin üstündeyse.
+   *
+   * @default 'soft'
+   */
   variant?: 'solid' | 'soft' | 'outline'
+  /**
+   * Rozet boyutu. Tablo satırında ve kart üstünde `sm`, detay başlığında `md`.
+   * @default 'md'
+   */
   size?: 'sm' | 'md'
+  /**
+   * Etiketin solunda durum renginde küçük bir nokta gösterir.
+   *
+   * Nokta yalnız tarama hızını artırır, anlamı taşımaz: renk tek başına gösterge
+   * değildir ve rozet her zaman metnini de yazar. Bu yüzden ekran okuyucudan
+   * gizlenir.
+   *
+   * @default false
+   */
   showDot?: boolean
 }
 
@@ -644,13 +838,40 @@ export interface ChartCardProps {
 }
 
 export interface PaginationProps {
+  /**
+   * Geçerli sayfa. **1'den başlar**, 0'dan değil — kullanıcıya gösterilen sayı
+   * ile aynı olsun diye. Aralık dışı bir değer verilirse gösterim sırasında
+   * kırpılır (bkz. Pagination JSDoc), çökmez.
+   */
   page: number
+  /** Sayfa başına kayıt sayısı. Toplam sayfa bundan ve `totalItems`'tan türetilir. */
   pageSize: number
+  /** Filtrelenmiş toplam kayıt sayısı. `0` ise component hiç render edilmez. */
   totalItems: number
+  /** Sunulacak sayfa boyutları. `onPageSizeChange` ile birlikte verilmezse seçici çıkmaz. */
   pageSizeOptions?: number[]
+  /**
+   * - `numbered`: sayfa numaraları, aradaki boşluklar `…` ile kısaltılır. Masaüstü.
+   * - `compact`: yalnız ileri/geri ve "Sayfa 3 / 12". Dar ekran.
+   * - `loadMore`: biriktirerek yükleyen tek buton. Sonsuz akış hissi verir.
+   *
+   * @default 'numbered'
+   */
   variant?: 'numbered' | 'compact' | 'loadMore'
+  /**
+   * Tüm sayfalama kontrollerini devre dışı bırakır — genelde yeni sayfa
+   * yüklenirken. Sınırdaki ileri/geri butonları bundan bağımsız olarak zaten
+   * kapalıdır.
+   *
+   * @default false
+   */
   disabled?: boolean
+  /** Sayfa değiştiğinde 1-tabanlı yeni sayfa ile çalışır. */
   onPageChange: (page: number) => void
+  /**
+   * Sayfa boyutu değiştiğinde çalışır. Üst katman bunu alınca sayfayı 1'e
+   * döndürmelidir: 10. sayfadayken boyut 20'den 100'e çıkarsa o sayfa artık yok.
+   */
   onPageSizeChange?: (pageSize: number) => void
 }
 
@@ -666,50 +887,137 @@ export interface RejectionReasonPickerProps {
 }
 
 export interface EmptyStateProps {
+  /** Durumu tek cümlede söyleyen başlık. "Veri yok" değil, "Henüz ilan eklenmemiş". */
   title: string
+  /** Neden boş olduğunu ve ne yapılabileceğini açıklar. */
   description?: string
+  /** Dekoratif görsel veya ikon; ekran okuyucudan gizlenir. Anlam taşımamalıdır. */
   illustration?: ReactNode
+  /** Ana eylem. Component eylemi kendi uydurmaz — sayfa katmanı verir. */
   primaryAction?: ReactNode
+  /** İkincil eylem (yardım, dokümantasyon). */
   secondaryAction?: ReactNode
+  /**
+   * - `default`: sayfanın tamamı boşken. Geniş nefes alanı.
+   * - `compact`: kart, panel veya tablo içinde. Daha az dikey alan.
+   * - `filtered`: filtre sonucu boşken. Kesik kenarlıkla ayrılır — veri
+   *   *yok* değil, *bu filtreye uyan* yok; kullanıcının atacağı adım farklı.
+   *
+   * @default 'default'
+   */
   variant?: 'default' | 'compact' | 'filtered'
 }
 
 export interface ErrorStateProps {
+  /** Neyin başarısız olduğu. "Hata" değil, "İlanlar yüklenemedi". */
   title: string
+  /** Ne yapılabileceği. Yığın izi veya ham sunucu mesajı değil. */
   description: string
+  /** Destek ekibinin arayabileceği kod. Verilirse mono yazıyla, seçilebilir gösterilir. */
   code?: string
+  /**
+   * Yeniden deneme butonunun metni.
+   * @default 'Tekrar dene'
+   */
   retryLabel?: string
+  /**
+   * - `page`: ekranın tamamı yüklenemediğinde.
+   * - `section`: panel veya kart içeriği yüklenemediğinde; çevresi ayakta kalır.
+   * - `inline`: tek satır. Toolbar veya form içindeki dar alanlarda.
+   *
+   * @default 'page'
+   */
   variant?: 'page' | 'section' | 'inline'
+  /**
+   * Verilirse yeniden deneme butonu görünür. Verilmezse hata kalıcıdır
+   * (`UiError.retryable === false` karşılığı) — tekrar denemenin işe yaramayacağı
+   * yerde buton sunmak kullanıcıyı boşa uğraştırır.
+   */
   onRetry?: () => void
 }
 
 export interface ConfirmDialogProps {
+  /** Dialog'un görünürlüğü. Kapanınca `requireText` alanına yazılan metin sıfırlanır. */
   open: boolean
+  /** Onaylanacak eylem. Soru değil, eylemin adı: "İlanı kalıcı olarak sil". */
   title: string
+  /** Sonucun ne olacağı ve geri alınıp alınamayacağı. Dialog'un açıklaması olur. */
   description: string
+  /** Onay butonunun metni. Eylemi tekrar eder ("Sil"), "Tamam" demez. */
   confirmLabel: string
+  /**
+   * Vazgeçme butonunun metni.
+   * @default 'Vazgeç'
+   */
   cancelLabel?: string
+  /**
+   * `danger` onay butonunu yıkıcı stile alır. Geri alınamayan işlemlerde kullanın.
+   * @default 'neutral'
+   */
   tone?: 'neutral' | 'danger'
+  /**
+   * Verilirse kullanıcı bu metni birebir yazana kadar onay butonu kapalı kalır.
+   * Toplu silme gibi tek tıkla dönülemeyecek işlemler için: yazmak, kullanıcıyı
+   * ne yaptığını okumaya zorlar.
+   */
   requireText?: string
+  /**
+   * İşlem sürerken onay butonunda spinner gösterir, vazgeçmeyi kapatır ve
+   * dialog'un dışarı tıklama / `Escape` ile kapanmasını engeller — istek
+   * uçarken dialog'un kapanması kullanıcıya sonucu göstermez.
+   *
+   * @default false
+   */
   loading?: boolean
+  /**
+   * Onaya basıldığında çalışır. Dialog'u kapatmak çağıranın işi: işlem
+   * başarısız olursa dialog açık kalıp hatayı gösterebilmeli.
+   */
   onConfirm: () => void
+  /** Vazgeçme, kapatma, `Escape` ve dışarı tıklama — hepsi buraya çıkar. */
   onCancel: () => void
 }
 
 export interface BulkActionDefinition {
+  /** `onAction`'a geri verilecek kimlik. */
   id: string
+  /** Butonun görünür metni. İkon tek başına yeterli değildir. */
   label: string
+  /**
+   * `danger` yıkıcı stil verir (toplu silme, toplu reddetme).
+   * @default 'neutral'
+   */
   tone?: 'neutral' | 'danger'
+  /** Etiketin solundaki ikon. Dekoratiftir, ekran okuyucudan gizlenir. */
   icon?: ReactNode
+  /** Eylem bu seçim için geçersizse kapatır. Yetki içinse eylemi hiç listelemeyin. */
   disabled?: boolean
 }
 
 export interface BulkActionBarProps {
+  /** Seçili kayıt sayısı. `0` ise component hiç render edilmez. */
   selectedCount: number
+  /** Sunulacak toplu eylemler. Yetkisiz eylemler bu listeye hiç konmamalıdır. */
   actions: BulkActionDefinition[]
+  /**
+   * - `floating`: ekranın altında yüzen ada. Yer kaplamaz, uzun listede hep erişilir.
+   * - `sticky`: içerik kabının alt kenarına yapışır, tam genişlik.
+   * - `inline`: normal akışta, tablonun üstündeki toolbar'da.
+   *
+   * @default 'floating'
+   */
   variant?: 'floating' | 'sticky' | 'inline'
+  /**
+   * Süren eylemin id'si. O butonda spinner çıkar, **diğerleri kapanır**: aynı
+   * seçim üzerinde iki toplu işlemin yarışması veri kaybına yol açar.
+   */
   loadingActionId?: string
+  /**
+   * Bir eyleme basıldığında `BulkActionDefinition.id` ile çalışır. Hangi
+   * kayıtlara uygulanacağını çağıran bilir — çubuk yalnız sayıyı görür.
+   */
   onAction: (actionId: string) => void
+  /** Seçimi temizler. Kullanıcının seçimden çıkışı her zaman açık olmalı. */
   onClearSelection: () => void
 }
 
