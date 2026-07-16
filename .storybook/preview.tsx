@@ -1,7 +1,25 @@
-import type { Preview } from '@storybook/react-vite'
+import type { Decorator, Preview } from '@storybook/react-vite'
 
 import { withQuery, withRouter } from '../src/storybook/decorators'
-import '../src/styles/global.css'
+import '../src/tokens/globals.css'
+
+type ThemeName = 'corporate-blue' | 'neutral-slate' | 'warm-amber'
+
+/**
+ * Seçili paleti `<html data-theme="...">` üzerinden uygular.
+ *
+ * Token'lar CSS custom property olduğu için tema değişiminde reload gerekmez;
+ * açık olan story anında güncellenir.
+ */
+const withTheme: Decorator = (Story, context) => {
+  const theme = (context.globals['theme'] ?? 'corporate-blue') as ThemeName
+
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset['theme'] = theme
+  }
+
+  return <Story />
+}
 
 const preview: Preview = {
   /**
@@ -11,12 +29,26 @@ const preview: Preview = {
   tags: ['autodocs', 'admin-panel'],
 
   /**
-   * Bütün story'lere uygulanan sarmalayıcılar. Router ve Query context'i
-   * olmadan bu hook'ları kullanan component'ler Storybook'ta patlar.
-   *
-   * Sıra dıştan içe doğrudur: withRouter en dışta, withQuery içinde kalır.
+   * Bütün story'lere uygulanan sarmalayıcılar. Sıra dıştan içe doğrudur:
+   * tema en dışta, sonra router, en içte query.
    */
-  decorators: [withQuery, withRouter],
+  decorators: [withTheme, withQuery, withRouter],
+
+  globalTypes: {
+    theme: {
+      name: 'Tema',
+      description: 'Geçici design token paleti',
+      toolbar: {
+        icon: 'paintbrush',
+        dynamicTitle: true,
+        items: [
+          { value: 'corporate-blue', title: 'Kurumsal Mavi' },
+          { value: 'neutral-slate', title: 'Nötr Slate' },
+          { value: 'warm-amber', title: 'Sıcak Amber' },
+        ],
+      },
+    },
+  },
 
   parameters: {
     layout: 'centered',
@@ -31,18 +63,21 @@ const preview: Preview = {
     },
 
     /**
-     * Admin panel masaüstü öncelikli bir üründür: moderasyon kuyruğu, tablolar ve
-     * toplu işlemler geniş ekranda kullanılır. Bu yüzden varsayılan desktop.
-     * Mobil viewport'lar yine mevcut — tablet üzerinden hızlı moderasyon senaryosu
-     * için kontrol edilebilir.
+     * Brifing kuralı: mobil temel görünümdür, 320 piksel taban alınır.
+     * Masaüstü düzenleri bunun üzerine `min-width` sorgularıyla eklenir.
      */
     viewport: {
       options: {
-        mobile390: { name: 'Mobile 390', styles: { width: '390px', height: '844px' } },
+        mobile320: { name: 'Mobil 320', styles: { width: '320px', height: '800px' } },
+        mobile430: { name: 'Mobil 430', styles: { width: '430px', height: '900px' } },
         tablet768: { name: 'Tablet 768', styles: { width: '768px', height: '1024px' } },
-        desktop1280: { name: 'Desktop 1280', styles: { width: '1280px', height: '900px' } },
         desktop1440: { name: 'Desktop 1440', styles: { width: '1440px', height: '1000px' } },
-        desktop1920: { name: 'Desktop 1920', styles: { width: '1920px', height: '1080px' } },
+      },
+    },
+
+    options: {
+      storySort: {
+        order: ['Foundations', 'Primitives', 'Composites', 'Screens', 'Patterns'],
       },
     },
 
@@ -52,7 +87,8 @@ const preview: Preview = {
       // 'off'   - a11y kontrolünü tamamen kapatır
       //
       // Ekip Storybook'a alıştıktan ve mevcut ihlaller temizlendikten sonra
-      // 'error'a çekilecek. Şimdiden 'error' yapmak ilk günden CI'ı kırar.
+      // 'error'a çekilecek. Brifing "axe raporunda kritik ihlal bulunmamalıdır"
+      // diyor; o kapıya Faz 1 sonunda geçeceğiz.
       test: 'todo',
     },
 
@@ -71,15 +107,12 @@ const preview: Preview = {
       primaryAudience: ['administrator', 'moderator', 'support-agent', 'operations-user'],
       allowedComponentSource: 'admin-panel',
       forbiddenComponentSources: ['front-pages'],
-      desktopFirst: true,
+      mobileFirst: true,
     },
   },
 
   initialGlobals: {
-    viewport: {
-      value: 'desktop1440',
-      isRotated: false,
-    },
+    theme: 'corporate-blue',
   },
 }
 
