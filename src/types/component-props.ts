@@ -4,6 +4,7 @@ import type {
   InputHTMLAttributes,
   ReactElement,
   ReactNode,
+  Ref,
   TextareaHTMLAttributes,
 } from 'react'
 
@@ -155,9 +156,20 @@ export interface TagProps extends HTMLAttributes<HTMLSpanElement> {
 // kaynaktan, FieldMetaProps'tan gelir.
 export interface InputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'required'>, FieldMetaProps {
+  /** @default 'md' */
   size?: ControlSize
+  /** Kutunun solunda gösterilen ikon. Dekoratiftir, ekran okuyucudan gizlenir. */
   leadingIcon?: ReactNode
+  /** Kutunun sağında gösterilen eylem (temizle, göster/gizle gibi). */
   trailingAction?: ReactNode
+  /**
+   * Asıl `<input>` elementine erişim.
+   *
+   * Brifingden sapma: `InputHTMLAttributes` `ref` içermez, bu yüzden açıkça eklendi.
+   * Gerekçe: SearchInput temizleme butonuna basıldığında odağı input'a geri
+   * vermek zorunda — vermezse klavye kullanıcısı ortada kalır.
+   */
+  ref?: Ref<HTMLInputElement>
 }
 
 export interface SearchInputProps extends InputProps {
@@ -167,25 +179,41 @@ export interface SearchInputProps extends InputProps {
 }
 
 export interface NumberInputProps extends FieldMetaProps {
-  value?: number
+  /**
+   * Kontrollü değer. Boş kutu `undefined` ile ifade edilir.
+   *
+   * Brifingden sapma: tip `number` yerine `number | undefined`. Gerekçe:
+   * `onValueChange` kutu boşaltılınca `undefined` veriyor, ama `value?: number`
+   * (exactOptionalPropertyTypes açıkken) onu geri almıyordu — kontrollü kullanımda
+   * gidiş-dönüş kırıktı. Aynı düzeltme CurrencyInput ve Select'te de yapıldı.
+   */
+  value?: number | undefined
   min?: number
   max?: number
   step?: number
+  /** @default 'md' */
   size?: ControlSize
   disabled?: boolean
   readOnly?: boolean
+  /** Değer değiştiğinde çalışır. Kutu boşaltılırsa `undefined` gelir. */
   onValueChange?: (value: number | undefined) => void
 }
 
 export interface CurrencyInputProps extends FieldMetaProps {
-  value?: number
+  /** Tutar. Boş kutu `undefined`. Bkz. NumberInputProps.value — aynı düzeltme. */
+  value?: number | undefined
+  /** Seçili para birimi. */
   currency: Currency
+  /** Seçilebilir para birimleri. Verilmezse yalnız `currency` gösterilir. */
   currencies?: Currency[]
   min?: number
   max?: number
+  /** @default 'md' */
   size?: ControlSize
   disabled?: boolean
+  /** Tutar değiştiğinde çalışır. Kutu boşaltılırsa `undefined` gelir. */
   onValueChange?: (value: number | undefined) => void
+  /** Para birimi değiştiğinde çalışır. */
   onCurrencyChange?: (currency: Currency) => void
 }
 
@@ -197,14 +225,21 @@ export interface SelectOption {
 }
 
 export interface SelectProps extends FieldMetaProps {
-  value?: string
+  /** Seçili değer. Seçim yoksa `undefined`. Bkz. NumberInputProps.value — aynı düzeltme. */
+  value?: string | undefined
   options: SelectOption[]
+  /** Seçim yokken gösterilen metin. Etiket yerine geçmez. */
   placeholder?: string
+  /** @default 'md' */
   size?: ControlSize
   disabled?: boolean
+  /** Seçenek listesinde arama kutusu gösterir. Uzun listelerde açılmalı. */
   searchable?: boolean
+  /** Seçimi temizleme butonu gösterir. */
   clearable?: boolean
+  /** Seçenekler yüklenirken gösterilir. */
   loading?: boolean
+  /** Seçim değiştiğinde çalışır. Seçim temizlenirse `undefined` gelir. */
   onValueChange?: (value: string | undefined) => void
 }
 
@@ -220,13 +255,28 @@ export interface MultiSelectProps extends FieldMetaProps {
   onValuesChange?: (values: string[]) => void
 }
 
+// Brifingden sapma: `onChange` native attribute'lardan çıkarıldı ve yerine
+// `onCheckedChange` eklendi. Gerekçe: brifing SwitchProps'u `onCheckedChange` ile
+// temiz tanımlamış ama CheckboxProps'a native onChange'i miras bırakmış — iki
+// benzer kontrol iki farklı API sunuyordu. Ayrıca Base UI'ın Checkbox'ı bir
+// `<button role="checkbox">` render ettiği için native ChangeEvent hiç doğmuyor;
+// onu taklit etmek tip sistemine yalan söylemek olurdu.
 export interface CheckboxProps extends Omit<
   InputHTMLAttributes<HTMLInputElement>,
-  'type' | 'size'
+  'type' | 'size' | 'onChange'
 > {
+  /** Kutunun yanında görünen etiket. Tıklanabilir alan etiketi de kapsar. */
   label: string
+  /** Etiketin altında gösterilen ek açıklama. */
   description?: string
+  /**
+   * Kısmi seçim. Tablo başlığındaki "tümünü seç" kutusu için: bazı satırlar
+   * seçiliyken ne işaretli ne boş görünmeli. `aria-checked="mixed"` olarak duyurulur.
+   * @default false
+   */
   indeterminate?: boolean
+  /** Seçim değiştiğinde çalışır. */
+  onCheckedChange?: (checked: boolean) => void
 }
 
 export interface RadioOption {
