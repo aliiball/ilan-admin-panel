@@ -1,4 +1,11 @@
-import { ListingStatus, RejectionReason } from '../types/domain'
+import {
+  Currency,
+  ListingCategory,
+  ListingStatus,
+  RejectionReason,
+  SellerType,
+  type ListingTransactionType,
+} from '../types/domain'
 
 /**
  * Arayüzde görünen Türkçe etiketler.
@@ -33,6 +40,41 @@ export const LISTING_STATUS_PUBLIC = {
   [ListingStatus.Expired]: false,
   [ListingStatus.Archived]: false,
 } satisfies Record<ListingStatus, boolean>
+
+export const LISTING_CATEGORY_LABEL = {
+  [ListingCategory.Residential]: 'Konut',
+  [ListingCategory.Land]: 'Arsa',
+  [ListingCategory.Commercial]: 'İşyeri',
+  [ListingCategory.Building]: 'Bina',
+  [ListingCategory.Timeshare]: 'Devremülk',
+  [ListingCategory.TourismFacility]: 'Turistik Tesis',
+} satisfies Record<ListingCategory, string>
+
+/**
+ * İşlem türü etiketleri.
+ *
+ * `ListingTransactionType` altı ayrı enum'un birleşimi ama değerler örtüşüyor
+ * (`satilik` hem konutta hem arsada var), bu yüzden tek bir sözlük yeterli.
+ */
+export const TRANSACTION_TYPE_LABEL: Record<ListingTransactionType, string> = {
+  satilik: 'Satılık',
+  kiralik: 'Kiralık',
+  gunlukKiralik: 'Günlük Kiralık',
+  devren: 'Devren',
+}
+
+export const SELLER_TYPE_LABEL = {
+  [SellerType.Owner]: 'Sahibinden',
+  [SellerType.RealEstateOffice]: 'Emlak Ofisi',
+  [SellerType.ConstructionCompany]: 'İnşaat Firması',
+} satisfies Record<SellerType, string>
+
+export const CURRENCY_SYMBOL = {
+  [Currency.Try]: '₺',
+  [Currency.Usd]: '$',
+  [Currency.Eur]: '€',
+  [Currency.Gbp]: '£',
+} satisfies Record<Currency, string>
 
 export const REJECTION_REASON_LABEL = {
   [RejectionReason.WrongCategory]: 'Yanlış Kategori',
