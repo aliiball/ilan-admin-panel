@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Aynı branch'e arka arkaya push atılırsa önceki çalışma iptal edilir.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Doğrulama
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # packageManager alanını package.json'dan okur, pnpm sürümü orada sabit.
+      - name: pnpm kurulumu
+        uses: pnpm/action-setup@v6
+
+      # Node sürümü .nvmrc'den gelir; lokal ile CI'ın ayrışmasını engeller.
+      - name: Node.js kurulumu
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Bağımlılıklar
+        run: pnpm install --frozen-lockfile
+
+      # Story testleri gerçek tarayıcıda çalışır (Vitest browser mode).
+      # Bu adım olmadan test-storybook adımı "browser not found" ile patlar.
+      - name: Playwright tarayıcısı
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Format kontrolü
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Story testleri
+        run: pnpm test-storybook --run
+
+      - name: Storybook build
+        run: pnpm build-storybook
