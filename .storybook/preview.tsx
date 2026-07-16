@@ -1,5 +1,6 @@
 import type { Preview } from '@storybook/react-vite'
 
+import { withQuery, withRouter } from '../src/storybook/decorators'
 import '../src/styles/global.css'
 
 const preview: Preview = {
@@ -8,6 +9,14 @@ const preview: Preview = {
    * story dosyalarında tekrar yazmaya gerek yok.
    */
   tags: ['autodocs', 'admin-panel'],
+
+  /**
+   * Bütün story'lere uygulanan sarmalayıcılar. Router ve Query context'i
+   * olmadan bu hook'ları kullanan component'ler Storybook'ta patlar.
+   *
+   * Sıra dıştan içe doğrudur: withRouter en dışta, withQuery içinde kalır.
+   */
+  decorators: [withQuery, withRouter],
 
   parameters: {
     layout: 'centered',

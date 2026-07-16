@@ -21,14 +21,22 @@ export default defineConfig({
   },
 
   /**
-   * vanilla-extract'in recipe runtime'ı story dosyalarından dolaylı olarak
-   * yükleniyor ve Vite tarafından ancak test çalışırken keşfediliyordu. Bu, test
-   * ortasında bağımlılıkların yeniden optimize edilip sayfanın reload olmasına,
-   * dolayısıyla bütün story testlerinin "Failed to fetch dynamically imported
-   * module" ile patlamasına yol açıyordu. Önceden bildirerek reload'u engelliyoruz.
+   * Her story'nin dolaylı olarak yüklediği bağımlılıklar önden bildirilir.
+   *
+   * Bildirilmezlerse Vite bunları ancak test çalışırken keşfeder, bağımlılıkları
+   * yeniden optimize eder ve sayfayı reload eder; o an fetch edilmiş modüllerin
+   * hash'leri geçersiz kalır ve bütün story'ler "Failed to fetch dynamically
+   * imported module" ile patlar.
+   *
+   * react-router ve react-query buraya dahil, çünkü preview.tsx'teki global
+   * decorator'lar üzerinden istisnasız her story'ye yükleniyorlar.
    */
   optimizeDeps: {
-    include: ['@vanilla-extract/recipes/createRuntimeFn'],
+    include: [
+      '@vanilla-extract/recipes/createRuntimeFn',
+      'react-router',
+      '@tanstack/react-query',
+    ],
   },
 
   // https://storybook.js.org/docs/writing-tests/integrations/vitest-addon
