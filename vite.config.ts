@@ -32,7 +32,35 @@ export default defineConfig({
    * decorator'lar üzerinden istisnasız her story'ye yükleniyorlar.
    */
   optimizeDeps: {
-    include: ['@vanilla-extract/recipes/createRuntimeFn', 'react-router', '@tanstack/react-query'],
+    include: [
+      '@vanilla-extract/recipes/createRuntimeFn',
+      'react-router',
+      '@tanstack/react-query',
+      'lucide-react',
+      'react-day-picker',
+      'react-day-picker/locale',
+      // Base UI alt yolları tek tek bildirilir: paket subpath export kullandığı için
+      // toptan bildirim mümkün değil. YENİ PRIMITIVE EKLERKEN alt yolunu buraya da ekleyin,
+      // yoksa sıcak cache'te ilk test çalıştırması "Failed to fetch dynamically imported
+      // module" ile patlar (CI etkilenmez, orada cache soğuktur).
+      '@base-ui/react/accordion',
+      '@base-ui/react/avatar',
+      '@base-ui/react/button',
+      '@base-ui/react/checkbox',
+      '@base-ui/react/combobox',
+      '@base-ui/react/dialog',
+      '@base-ui/react/field',
+      '@base-ui/react/input',
+      '@base-ui/react/number-field',
+      '@base-ui/react/popover',
+      '@base-ui/react/radio',
+      '@base-ui/react/radio-group',
+      '@base-ui/react/select',
+      '@base-ui/react/separator',
+      '@base-ui/react/switch',
+      '@base-ui/react/tabs',
+      '@base-ui/react/tooltip',
+    ],
   },
 
   // https://storybook.js.org/docs/writing-tests/integrations/vitest-addon
