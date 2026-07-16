@@ -4,3 +4,6 @@ storybook-static
 coverage
 pnpm-lock.yaml
 *.log
+
+# Kaynak brifing dokümanı — dış kaynaklı referans, biçimine dokunulmaz.
+gayrimenkul-admin-panel-uygulama-brifingi.md

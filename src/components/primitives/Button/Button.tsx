@@ -1,62 +1,20 @@
-import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 import { Button as BaseButton } from '@base-ui/react/button'
-import { button, label, labelHidden, spinner } from './Button.css'
-
-/**
- * Butonun görsel önem seviyesi.
- *
- * - `primary`: Ekrandaki ana eylem. Bir ekranda tek tane olmalı.
- * - `secondary`: İkincil eylem (İptal, Geri, Taslak kaydet).
- * - `ghost`: Tablo satırı içi ve toolbar gibi yoğun alanlardaki düşük vurgulu eylem.
- * - `danger`: Geri alınamayan yıkıcı eylem (silme, kalıcı reddetme).
- */
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
-
-/**
- * Buton yüksekliği. Tablo satırlarında `sm`, form ve sayfa eylemlerinde `md` kullanılır.
- */
-export type ButtonSize = 'sm' | 'md' | 'lg'
-
-type NativeButtonProps = Omit<ComponentPropsWithoutRef<'button'>, 'className' | 'style'>
-
-export interface ButtonProps extends NativeButtonProps {
-  /**
-   * Butonun görsel önem seviyesini belirler.
-   * @default 'primary'
-   */
-  variant?: ButtonVariant
-
-  /**
-   * Butonun yüksekliğini ve yazı boyutunu belirler.
-   * @default 'md'
-   */
-  size?: ButtonSize
-
-  /**
-   * İşlem sürerken butonu devre dışı bırakır ve spinner gösterir.
-   * Etiket gizlenir ama genişliği korunur, böylece buton boyutu değişmez.
-   * @default false
-   */
-  loading?: boolean
-
-  /**
-   * Butonu bulunduğu kabın tam genişliğine yayar.
-   * @default false
-   */
-  fullWidth?: boolean
-
-  /**
-   * Butonun etiketi. Eylemi fiille ifade edin ("İlanı onayla"), "Tamam" gibi
-   * belirsiz etiketlerden kaçının.
-   */
-  children: ReactNode
-}
+// Bilerek göreli yol: Storybook'un react-docgen'i `@/` alias'ını çözemiyor ve
+// çözemeyince component'in tamamını atlıyor — prop tablosu ve AI manifest'i boş
+// kalıyor. Göreli yolda import'u sorunsuz takip ediyor. Bu istisna yalnızca prop
+// tipi import'ları içindir; kodun geri kalanında `@/` kullanılabilir.
+import type { ButtonProps } from '../../../types/component-props'
+import { button, icon, label, labelHidden, spinner } from './Button.css'
 
 /**
  * Admin Panel üzerindeki moderasyon ve operasyon eylemleri için kullanılır.
  *
  * Yetki kontrolü bu component'in sorumluluğunda değildir: kullanıcının yetkisi
- * yoksa butonu `disabled` vermek yerine hiç render etmeyin.
+ * yoksa butonu `disabled` vermek yerine hiç render etmeyin. Brifingin
+ * "geçersiz eylem sunulmamalıdır" kabul kriteri bunu gerektirir.
+ *
+ * Erişilebilir buton davranışını Base UI sağlar; bu katman yalnızca görünümü
+ * ve yükleniyor durumunu ekler.
  *
  * Public Front Pages ekranlarında kullanılmaz — o repository'nin kendi Button'ı vardır.
  *
@@ -70,18 +28,37 @@ export function Button({
   fullWidth = false,
   disabled = false,
   type = 'button',
+  leadingIcon,
+  trailingIcon,
+  className,
   children,
   ...rest
 }: ButtonProps) {
+  const classNames = [button({ variant, size, fullWidth, loading }), className]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <BaseButton
       type={type}
-      className={button({ variant, size, fullWidth, loading })}
+      className={classNames}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...rest}
     >
-      <span className={loading ? `${label} ${labelHidden}` : label}>{children}</span>
+      <span className={loading ? `${label} ${labelHidden}` : label}>
+        {leadingIcon ? (
+          <span className={icon} aria-hidden="true">
+            {leadingIcon}
+          </span>
+        ) : null}
+        {children}
+        {trailingIcon ? (
+          <span className={icon} aria-hidden="true">
+            {trailingIcon}
+          </span>
+        ) : null}
+      </span>
       {loading ? <span className={spinner} aria-hidden="true" /> : null}
     </BaseButton>
   )
