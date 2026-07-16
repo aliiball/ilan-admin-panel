@@ -47,7 +47,13 @@ export function Checkbox({
         disabled={disabled}
         {...(checked !== undefined && { checked: Boolean(checked) })}
         {...(defaultChecked !== undefined && { defaultChecked: Boolean(defaultChecked) })}
-        {...(onCheckedChange !== undefined && { onCheckedChange })}
+        // Sarmalanıyor: Base UI onCheckedChange'e ikinci bir eventDetails argümanı
+        // geçiyor, brifingin sözleşmesi ise tek argümanlı. Doğrudan geçirilirse
+        // tüketici tarafında `setState` gibi ikinci argümanı anlamlı olan
+        // fonksiyonlar bozulur.
+        {...(onCheckedChange !== undefined && {
+          onCheckedChange: (next: boolean) => onCheckedChange(next),
+        })}
         {...(name !== undefined && { name })}
         {...(value !== undefined && { value: String(value) })}
       >

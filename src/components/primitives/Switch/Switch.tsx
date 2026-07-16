@@ -36,7 +36,10 @@ export function Switch({
         className={track({ size })}
         checked={checked}
         disabled={disabled}
-        {...(onCheckedChange !== undefined && { onCheckedChange })}
+        // Checkbox ile aynı gerekçe: Base UI ikinci bir eventDetails argümanı geçiyor.
+        {...(onCheckedChange !== undefined && {
+          onCheckedChange: (next: boolean) => onCheckedChange(next),
+        })}
       >
         <BaseSwitch.Thumb className={thumb({ size })} />
       </BaseSwitch.Root>
