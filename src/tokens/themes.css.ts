@@ -215,20 +215,33 @@ createGlobalTheme(':root', vars, {
         text: vars.color.danger[800],
         border: vars.color.danger[600],
       },
+      /**
+       * Brifingden sapma: `paused` info yerine nötr, `expired` nötr yerine
+       * turuncu tonuna alındı.
+       *
+       * Brifingin paletinde 8 durum yalnızca 6 farklı zemin üretiyordu:
+       * `changes` ile `paused` ikisi de info-50, `draft` ile `expired` ikisi de
+       * neutral-100 idi. Rozetler metin taşıdığı için erişilebilirlik sorunu
+       * değildi, ama moderasyon kuyruğunda 50 satırı tarayıp durum dağılımını
+       * bir bakışta görmek rozetin varlık sebebi — iki çift karışınca o fayda
+       * kayboluyordu. Brifingin "tüm ListingStatus değerleri ayrı görsel durumla
+       * temsil edilmelidir" kriteri de bunu gerektiriyor.
+       */
       paused: {
-        bg: vars.color.info[50],
-        text: vars.color.info[900],
-        border: vars.color.info[700],
+        bg: vars.color.neutral[200],
+        text: vars.color.neutral[800],
+        border: vars.color.neutral[600],
       },
       expired: {
-        bg: vars.color.neutral[100],
-        text: vars.color.neutral[700],
-        border: vars.color.neutral[400],
+        bg: vars.color.warning[100],
+        text: vars.color.warning[900],
+        border: vars.color.warning[700],
       },
+      /** Arşiv en koyu gri: üç gri durum taslak → pasif → arşiv diye kademelenir. */
       archived: {
-        bg: vars.color.neutral[200],
+        bg: vars.color.neutral[300],
         text: vars.color.neutral[900],
-        border: vars.color.neutral[500],
+        border: vars.color.neutral[600],
       },
     },
   },
