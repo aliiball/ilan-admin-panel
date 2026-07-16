@@ -116,9 +116,17 @@ export const label = style({
 /**
  * Yükleniyor durumunda etiket gizlenir ama yerini korur; böylece buton genişliği
  * değişmez ve çevresindeki düzen zıplamaz.
+ *
+ * Gizleme `opacity` ile yapılır, `visibility: hidden` ile değil: erişilebilir ad
+ * hesabı `visibility: hidden` alt ağacını yok sayar ve yüklenen butonun **adı
+ * tamamen kaybolurdu** — ekran okuyucu kullanıcısı "düğme, meşgul" duyar, hangi
+ * düğme olduğunu duymazdı. `opacity: 0` görsel olarak aynı sonucu verir, yeri
+ * yine korur, ama metin erişilebilirlik ağacında kalır.
+ *
+ * (IconButton'da bu sorun yok: adı `aria-label`'dan gelir, metninden değil.)
  */
 export const labelHidden = style({
-  visibility: 'hidden',
+  opacity: 0,
 })
 
 export const spinner = style({

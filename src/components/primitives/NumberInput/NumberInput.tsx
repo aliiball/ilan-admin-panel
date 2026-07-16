@@ -43,6 +43,12 @@ export function NumberInput({
       disabled={disabled}
     >
       <NumberField.Root
+        // Base UI'ın varsayılanı "kullanıcının çalışma anı yerel ayarı": aynı
+        // değer Türkçe makinede `2.000.000`, İngilizce makinede `2,000,000`
+        // görünürdü. Türkçede virgül ondalık ayırıcıdır — moderatör fiyatı
+        // milyon katı yanlış okuyabilir. Panel tek dilli; `formatCurrency` de
+        // `tr-TR`'yi sabitliyor, aynı ekranda iki farklı biçim olmamalı.
+        locale="tr-TR"
         disabled={disabled}
         readOnly={readOnly}
         required={required}

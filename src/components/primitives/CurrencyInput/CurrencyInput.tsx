@@ -55,6 +55,9 @@ export function CurrencyInput({
       disabled={disabled}
     >
       <NumberField.Root
+        // Yerel ayar sabitleniyor; gerekçesi NumberInput'takiyle aynı: varsayılan
+        // "kullanıcının makinesi" olduğu için tutar makineden makineye değişirdi.
+        locale="tr-TR"
         disabled={disabled}
         required={required}
         {...(value !== undefined && { value })}

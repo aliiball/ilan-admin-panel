@@ -87,6 +87,16 @@ export const body = style({
   overflowY: 'auto',
   fontSize: vars.font.size.sm,
   color: vars.color.text.primary,
+
+  /*
+    Gövdesiz modal (açıklaması başlıkta olan bir ConfirmDialog gibi) dolgusunu
+    da bırakır: aksi hâlde başlıkla footer arasında, iki çizgiyle sınırlanmış
+    boş bir bant kalıyor ve eksik bir bölüm gibi okunuyordu. Element grid
+    satırını koruduğu için `display: none` yerine dolgu sıfırlanıyor.
+  */
+  ':empty': {
+    padding: 0,
+  },
 })
 
 export const footer = style({

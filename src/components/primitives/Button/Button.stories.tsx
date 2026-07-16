@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { fn } from 'storybook/test'
+import { expect, fn, within } from 'storybook/test'
 import { Check, ChevronDown, Trash2 } from 'lucide-react'
 import { Button } from './Button'
 
@@ -91,6 +91,26 @@ export const Large: Story = {
 /** Etiket gizlenir ama yerini korur — buton boyutu değişmez, düzen zıplamaz. */
 export const Loading: Story = {
   args: { loading: true, children: 'Kaydediliyor' },
+}
+
+/**
+ * Yüklenen buton adını kaybetmemeli.
+ *
+ * Etiket bir kez `visibility: hidden` ile gizleniyordu; erişilebilir ad hesabı o
+ * alt ağacı yok saydığı için buton `loading` iken **adsız** kalıyordu — ekran
+ * okuyucu "düğme, meşgul" diyor, hangi düğme olduğunu söylemiyordu. Gizleme
+ * `opacity`'ye alındı. Bu test o gerilemeyi yakalar: adı sorguladığı için
+ * gizleme yöntemi geri alınırsa kırılır.
+ */
+export const LoadingKeepsAccessibleName: Story = {
+  args: { loading: true, children: 'Kaydediliyor' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    const buton = canvas.getByRole('button', { name: 'Kaydediliyor' })
+    await expect(buton).toHaveAttribute('aria-busy', 'true')
+    await expect(buton).toBeDisabled()
+  },
 }
 
 export const Disabled: Story = {
