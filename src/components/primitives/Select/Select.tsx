@@ -58,6 +58,23 @@ export function Select({
   const hasError = error !== undefined && error !== ''
   const selected = options.find((option) => option.value === value)
 
+  /*
+    `value` aşağıda koşullu spread ile geçilmez: sözleşmenin `undefined`'ı
+    ("seçim yok") Base UI'a `null` diye çevrilir.
+
+    Base UI kontrollü olup olmadığına **ilk render'daki** `value`'ya bakarak karar
+    veriyor ve `undefined`'ı "kontrolsüz" sayıyor. Koşullu spread seçim yokken
+    prop'u hiç geçirmediğinden, `useState<string | undefined>(undefined)` ile
+    başlayan her çağıran (ImageGallery'nin fotoğraf reddi, aşağıdaki Interactive
+    story) Select'i önce kontrolsüz kuruyor, ilk seçimde kontrollüye çeviriyor ve
+    Base UI her seçimde console.error basıyordu. `null` geçmek kontrollülüğü
+    component'in ömrü boyunca sabitler.
+
+    Repodaki diğer koşullu spread'ler (`error`, `label`) doğrudur: onlar
+    `exactOptionalPropertyTypes` içindir ve orada yokluk ile `undefined` aynı
+    şeydir. `value`'da değildir — yokluk "kontrolsüz" demektir.
+  */
+
   const shell = (children: React.ReactNode) => (
     <FieldShell
       {...(label !== undefined && { label })}
@@ -75,7 +92,7 @@ export function Select({
       <Combobox.Root
         items={options}
         itemToStringLabel={(item: SelectOption) => item.label}
-        {...(selected !== undefined && { value: selected })}
+        value={selected ?? null}
         {...(onValueChange !== undefined && {
           onValueChange: (next: SelectOption | null) => onValueChange(next?.value),
         })}
@@ -133,7 +150,7 @@ export function Select({
 
   return shell(
     <BaseSelect.Root
-      {...(value !== undefined && { value })}
+      value={value ?? null}
       {...(onValueChange !== undefined && {
         onValueChange: (next: string | null) => onValueChange(next ?? undefined),
       })}

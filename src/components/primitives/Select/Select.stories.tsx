@@ -172,6 +172,63 @@ export const OpensAndSelects: Story = {
   },
 }
 
+/**
+ * `undefined`'dan başlayan kontrollü kullanımın tam turu: seç → çağıran sıfırlasın
+ * → aynı değeri yeniden seç.
+ *
+ * Taslağını karardan sonra temizleyen her çağıran bu turu yapar (ImageGallery'nin
+ * fotoğraf reddi: `setRedGerekce(undefined)`). Select kontrollülüğünü ömrü boyunca
+ * korumazsa Base UI ilk render'da onu kontrolsüz sayar; bu story kontrollülüğün
+ * sabit kaldığını ölçer.
+ *
+ * Not: bu tur `value` koşullu spread ile geçilirken de geçiyordu — kırık olan
+ * davranış değil, Base UI'ın her seçimde bastığı console.error'dı. Story yine de
+ * duruyor: `null`'a çevirmenin gidiş-dönüşü bozmadığının kanıtı, çünkü asıl
+ * regresyon riski burada — `null` geçmek seçimi imkânsız kılsaydı bu düşerdi.
+ */
+export const ResetToUndefinedAllowsRepick: Story = {
+  render: function Render(args) {
+    const [value, setValue] = useState<string | undefined>(undefined)
+    return (
+      <div style={{ display: 'grid', gap: '1.25rem' }}>
+        <Select
+          {...args}
+          value={value}
+          onValueChange={(next) => {
+            setValue(next)
+            args.onValueChange?.(next)
+          }}
+          helperText={`Seçili: ${value ?? '(yok)'}`}
+        />
+        <button type="button" onClick={() => setValue(undefined)}>
+          Taslağı sıfırla
+        </button>
+      </div>
+    )
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(document.body)
+
+    // 1. Gerekçe seçilir.
+    await userEvent.click(canvas.getByRole('combobox'))
+    await userEvent.click(await body.findByRole('option', { name: /Arsa/ }))
+    await expect(canvas.getByText('Seçili: arsa')).toBeInTheDocument()
+
+    // 2. Çağıran karardan sonra taslağı temizler.
+    await userEvent.click(canvas.getByRole('button', { name: 'Taslağı sıfırla' }))
+    await expect(canvas.getByText('Seçili: (yok)')).toBeInTheDocument()
+
+    // 3. Sıfırlama tetiğe de yansımalı: eski gerekçe orada durmamalı.
+    await expect(canvas.getByRole('combobox')).toHaveTextContent('Kategori seçin')
+
+    // 4. Asıl iddia: aynı gerekçe yeniden seçilebilmeli.
+    await userEvent.click(canvas.getByRole('combobox'))
+    await userEvent.click(await body.findByRole('option', { name: /Arsa/ }))
+    await expect(canvas.getByText('Seçili: arsa')).toBeInTheDocument()
+  },
+}
+
 export const VariantsComparison: Story = {
   render: (args) => (
     <div style={{ display: 'grid', gap: '1.25rem' }}>
