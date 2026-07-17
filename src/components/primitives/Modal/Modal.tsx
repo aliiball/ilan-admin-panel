@@ -66,7 +66,10 @@ export function Modal({
             />
           </div>
 
-          <div className={body}>{children}</div>
+          {/* Gerekçe Drawer.tsx'te: kaydırma kabı klavyeyle erişilebilir olmalı. */}
+          <div className={body} tabIndex={0}>
+            {children}
+          </div>
 
           {footer !== undefined ? <div className={footerClass}>{footer}</div> : null}
         </Dialog.Popup>

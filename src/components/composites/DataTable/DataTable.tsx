@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import { Checkbox } from '../../primitives/Checkbox'
 import { Skeleton } from '../../primitives/Skeleton'
 import { Spinner } from '../../primitives/Spinner'
+import { ErrorState } from '../ErrorState'
 import type { ColumnDef, DataTableProps } from '../../../types/component-props'
 import * as css from './DataTable.css'
 
@@ -34,6 +35,7 @@ export function DataTable<T extends { id: string }>({
   mobileMode = 'scroll',
   loading = false,
   error,
+  onRetry,
   emptyState,
   selectable = false,
   selectedIds = [],
@@ -75,14 +77,24 @@ export function DataTable<T extends { id: string }>({
   if (error !== undefined) {
     return (
       <div className={css.wrapper({ visualStyle })}>
-        <div className={css.stateBlock} role="alert">
-          <strong>{error.title}</strong>
-          <span style={{ color: 'var(--color-text-muted)' }}>{error.message}</span>
-          {error.code !== undefined ? (
-            <span style={{ color: 'var(--color-text-disabled)', fontSize: '1rem' }}>
-              Hata kodu: {error.code}
-            </span>
-          ) : null}
+        <div className={css.stateBlock}>
+          {/*
+            Hata bloğu elle çizilmiyor, `ErrorState`'e veriliyor: eskiden burada
+            `<strong>` + iki `<span>`'lik bir kopya vardı ve `onRetry` kanalı
+            eklenince o kopyanın butonu, odak halkasını ve `role="alert"`'ü de
+            yeniden üretmesi gerekecekti — `ErrorState`'in zaten yaptığı işi
+            ikinci kez, sapma riskiyle. Kopya ayrıca ham renk taşıyordu
+            (`style={{ color: 'var(--color-text-muted)' }}`).
+
+            `section`: tablo düştü, sayfanın kalanı ayakta.
+          */}
+          <ErrorState
+            variant="section"
+            title={error.title}
+            description={error.message}
+            {...(error.code !== undefined && { code: error.code })}
+            {...(error.retryable && onRetry !== undefined && { onRetry })}
+          />
         </div>
       </div>
     )
@@ -91,7 +103,12 @@ export function DataTable<T extends { id: string }>({
   if (loading) {
     return (
       <div className={css.wrapper({ visualStyle })} aria-busy="true">
-        <div className={css.scroller}>
+        {/*
+          Yükleme hâlinde de `tabIndex={0}`: iskelet satırlarda hiçbir kontrol
+          yok, yani kap tam da burada klavyeye kapalı kalırdı. Gerekçe aşağıdaki
+          tablo dalında ve Drawer.tsx'te.
+        */}
+        <div className={css.scroller} tabIndex={0}>
           <table className={css.table}>
             {/* Başlık korunur, satırlar skeleton olur: veri gelince düzen zıplamaz. */}
             <thead className={css.thead({ sticky: stickyHeader })}>
@@ -160,7 +177,14 @@ export function DataTable<T extends { id: string }>({
 
   return (
     <div className={css.wrapper({ visualStyle })}>
-      <div className={css.scroller}>
+      {/*
+        `tabIndex={0}`: tablo dar ekranda yatay kaydırılır. Seçilebilir veya
+        linkli tabloda kutular/linkler kabı klavyeye açıyordu, ama salt okunur
+        bir tabloda (PromotionFlagsPanel'in özet tablosu) içeride odaklanılacak
+        hiçbir şey yok ve sütunların yarısı fare olmadan görülemiyordu.
+        Gerekçenin uzunu Drawer.tsx'te.
+      */}
+      <div className={css.scroller} tabIndex={0}>
         <table className={css.table}>
           <thead className={css.thead({ sticky: stickyHeader })}>
             <tr>

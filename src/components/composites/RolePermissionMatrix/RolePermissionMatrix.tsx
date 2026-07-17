@@ -59,8 +59,8 @@ function hucreDurumu(role: AdminRole, permission: AdminPermission, isaretli: boo
 /**
  * Rol × izin matrisi — brifing 1.4 yetki tablosunun ekrandaki hâli.
  *
- * **Satır izin, sütun rol.** 32 izin dört role karşı geliyor ve ters çevrilmiş
- * hâli (32 sütun) hiçbir ekrana sığmaz: başlıklar döndürülür ya da kırpılır,
+ * **Satır izin, sütun rol.** 33 izin dört role karşı geliyor ve ters çevrilmiş
+ * hâli (33 sütun) hiçbir ekrana sığmaz: başlıklar döndürülür ya da kırpılır,
  * ikisi de okunmaz. Bu yönde izin etiketi bir cümle uzunluğunda olabilir
  * ("Kullanıcı bilgisi düzenleme (sınırlı: ad, e-posta, telefon…)") ve satır
  * başlığı sarabildiği için sorun çıkarmaz. Yön ayrıca brifing 1.4'ün kendi
@@ -174,7 +174,14 @@ export function RolePermissionMatrix({
         </p>
       ) : null}
 
-      <div className={css.scroller}>
+      {/*
+        `tabIndex={0}`: matris dar ekranda yatay kaydırılır ve `readOnly`'de
+        içinde **hiç** odaklanılabilir öğe yoktur — kutular okunur rozete
+        dönüşür. Düzenleme modunda kutular kabı klavyeye zaten açıyordu, salt
+        okunur modda tablo yalnız fareyle kaydırılabiliyordu: aynı component,
+        yetkisi olmayan kullanıcı için erişilemez. Gerekçenin uzunu Drawer.tsx'te.
+      */}
+      <div className={css.scroller} tabIndex={0}>
         <table className={css.table} aria-busy={saving}>
           <caption className={css.visuallyHidden}>{captionMetni}</caption>
 

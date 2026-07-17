@@ -48,7 +48,24 @@ export function Drawer({
             />
           </div>
 
-          <div className={body}>{children}</div>
+          {/*
+            `tabIndex={0}`: gövde kaydırma kabıdır (`overflow-y: auto`) ve
+            kaydırma kabına klavyeyle **girilemiyorsa** içerik fare/dokunmatik
+            dışında okunamaz. İçinde odaklanılabilir bir şey yoksa (uzun bir
+            metin, salt okunur audit detayı) ok tuşlarının kaydıracağı bir odak
+            da yoktur — axe `scrollable-region-focusable` tam olarak bunu
+            ölçüyor. Formlu çekmecede fazladan bir tab durağı olur; kaydırma
+            erişimi o durağa değer.
+
+            `role="region"` bilerek **verilmedi**: rol landmark üretir, adı
+            benzersiz olmak zorundadır ve Faz 3'ün ekranlarında sayfa başına
+            birden çok çekmece/tablo olacak — kural gereği olmayan bir landmark
+            eklemek `landmark-unique`'i bizim üretmediğimiz bir gürültüyle
+            doldururdu. Kural yalnız odaklanılabilirlik istiyor.
+          */}
+          <div className={body} tabIndex={0}>
+            {children}
+          </div>
 
           {footer !== undefined ? <div className={footerClass}>{footer}</div> : null}
         </Dialog.Popup>

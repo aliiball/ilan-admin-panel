@@ -17,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { expect, within } from 'storybook/test'
+import { expect, fn, userEvent, within } from 'storybook/test'
 import {
   ListingCategory,
   type CategoryDistributionItem,
@@ -179,7 +179,22 @@ function KategoriGrafigi({ data }: { data: CategoryDistributionItem[] }) {
         <PieChart accessibilityLayer={false}>
           {/* Dilim adları `Legend`'de: pasta üstüne yazılan etiketler dar kapta üst üste biner. */}
           <Legend />
-          <Pie data={dilimler} dataKey="count" nameKey="ad" isAnimationActive={false}>
+          {/*
+            `rootTabIndex={-1}` şart ve `accessibilityLayer={false}` bunu
+            KAPSAMIYOR — ikisi Recharts'ta bağımsız iki kapı. `Pie`'ın kendi
+            `rootTabIndex` prop'u var ve varsayılanı **0** (`polar/Pie.js:554`):
+            kök `<Layer>`'ına `tabIndex={0}` basıyor, yani `aria-hidden` kabın
+            içinde tab sırasına giren bir `<g>` kalıyor. Alan/çubuk/çizgi
+            grafiklerinde bu prop yok, bu yüzden yalnız pasta düşüyordu.
+            Ölçüm: `ChartIsHiddenButSummaryIsNot` (GIZLI_KAPTA_TAB_SIRASI).
+          */}
+          <Pie
+            data={dilimler}
+            dataKey="count"
+            nameKey="ad"
+            rootTabIndex={-1}
+            isAnimationActive={false}
+          >
             {dilimler.map((dilim) => (
               <Cell key={dilim.ad} fill={dilim.renk} />
             ))}
@@ -365,6 +380,19 @@ export const CategoryDistribution: Story = {
     height: 'lg',
     children: <KategoriGrafigi data={categoryDistribution} />,
   },
+  /**
+   * Odak tuzağı ölçümü **pasta grafiğinde de** yapılıyor.
+   *
+   * `ChartIsHiddenButSummaryIsNot` aynı iddiayı ölçüyor ama meta'nın
+   * varsayılan args'ıyla, yani **alan grafiğiyle**. Doğru şeyi yanlış grafikte
+   * ölçüyordu: `tabIndex` kapısı grafik tipine göre değişiyor ve `Pie`
+   * `rootTabIndex` ile kendi kapısını açıyor (varsayılan 0). Alan grafiği o
+   * prop'a sahip olmadığı için iddia orada her koşulda geçiyordu.
+   */
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('[aria-hidden="true"] svg')).not.toBeNull()
+    await expect(canvasElement.querySelector(GIZLI_KAPTA_TAB_SIRASI)).toBeNull()
+  },
 }
 
 /** Günlük moderasyon kararı (onay + red). Hafta sonu çukurları fixture'ın kendi verisi. */
@@ -517,7 +545,13 @@ export const ErrorReplacesChart: Story = {
   },
 }
 
-/** Sözleşmede retry kanalı yok; hiçbir şey yapmayacak bir buton da sunulmamalı. */
+/**
+ * `retryable: true` **tek başına** butonu çıkarmaz: `onRetry` de bağlanmalı.
+ *
+ * Kanal artık sözleşmede var (bkz. `ErrorCanBeRetried`), ama kural değişmedi —
+ * hatanın "tekrar denenebilir" olduğunu bilmek, tekrar denemeyi **yapabilmek**
+ * demek değil. Handler'sız buton basınca hiçbir şey yapmazdı; sunmamak doğrusu.
+ */
 export const ErrorHasNoRetryButton: Story = {
   args: {
     toolbar: ARAC_CUBUGU,
@@ -533,6 +567,54 @@ export const ErrorHasNoRetryButton: Story = {
     await expect(canvas.queryByRole('button', { name: 'Tekrar dene' })).not.toBeInTheDocument()
     /* Çıkış yolu araç çubuğunda: aralığı yeniden seçmek sorguyu tetikler. */
     await expect(canvas.getByRole('button', { name: 'Son 30 gün' })).toBeInTheDocument()
+  },
+}
+
+/**
+ * `onRetry` bağlıyken buton çıkar ve **yalnız o grafiği** tazeler.
+ *
+ * Dashboard'ın `partialSuccess` hâlinin karşılığı: düşen grafik kendi tekrar
+ * denemesini taşır, ayakta kalan KPI kartları ve öteki grafikler tazelenmez.
+ * Kart sorguyu kendi atmaz — yalnız haber verir.
+ */
+export const ErrorCanBeRetried: Story = {
+  args: {
+    error: {
+      title: 'Grafik yüklenemedi',
+      message: 'İstatistik servisine ulaşılamadı.',
+      retryable: true,
+    },
+    onRetry: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Tekrar dene' }))
+    await expect(args.onRetry).toHaveBeenCalledTimes(1)
+  },
+}
+
+/**
+ * `retryable: false` iken `onRetry` verilse **bile** buton çıkmaz.
+ *
+ * İki kapı birden açılmalı. Tekrar denemenin işe yaramayacağını söyleyen bir
+ * hatada (yetkisiz, kayıt yok) handler'ın varlığı o gerçeği değiştirmez;
+ * sayfanın handler'ı her hata için tek yerde bağlaması hatanın cinsini
+ * unutturmamalı.
+ */
+export const NonRetryableErrorIgnoresHandler: Story = {
+  args: {
+    error: {
+      title: 'Bu grafiği görme yetkiniz yok',
+      message: 'Dashboard metriklerine erişim için yöneticinize başvurun.',
+      retryable: false,
+    },
+    onRetry: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryByRole('button', { name: 'Tekrar dene' })).not.toBeInTheDocument()
   },
 }
 

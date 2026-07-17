@@ -15,6 +15,7 @@ import {
 import { expect, userEvent, within } from 'storybook/test'
 import { allListingFixtures, moderatorUser } from '../../../fixtures'
 import { AppShell } from './AppShell'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const MODLAR = ['fixed', 'collapsible'] as const
 
@@ -313,6 +314,20 @@ function OrnekSayfa({
         >
           <h2 style={{ margin: 0, fontSize: '1rem' }}>{ilan.title}</h2>
           <span style={{ color: 'var(--color-text-muted)' }}>İlan no: {ilan.listingNo}</span>
+          {/*
+            Satırın eylemi örnek sayfayı **gerçekçi** kılıyor, süs değil.
+            Kabuğun `<main>`'i ≥48rem'de kaydırma kabına dönüşüyor ve içinde
+            odaklanılabilir hiçbir şey olmayan bir kaydırma kabı klavyeyle
+            gezilemez (axe `scrollable-region-focusable`). Eski örnek sayfa
+            baştan sona metindi ve ihlali o üretiyordu — kuralı kapatmak yanlış
+            cevap olurdu, çünkü ihlal kabuğun değil örneğin kusuruydu: hiçbir
+            gerçek moderasyon kuyruğunda tek bir düğme bulunmaması mümkün değil.
+            (`<main>` atlama bağlantısının hedefi olduğu için `tabIndex={-1}`
+            kalmalı; onu `0` yapmak main'i tab sırasına sokardı.)
+          */}
+          <a href="#ilan-detay" style={{ justifySelf: 'start', fontSize: '1rem' }}>
+            Detayı aç
+          </a>
         </article>
       ))}
     </div>
@@ -572,6 +587,13 @@ export const MobileReservesNoSidebarColumn: Story = {
  * `id` yazsaydık ikisi de birinci kabuğa atlardı ve hiçbir test düşmezdi.
  */
 export const VariantsComparison: Story = {
+  /*
+    Bu story üç kabuğu **bilerek** yan yana çiziyor: ölçtüğü şey atlama
+    bağlantısının kendi kabuğuna gitmesi, yani `useId` kapsamı. Üç kabuk üç
+    `<main>` ve üç banner demek — muafiyet story'nin varlık sebebinin doğrudan
+    sonucu. Uygulamada kabuk tektir.
+  */
+  parameters: cokluKopyaLandmarkMuafiyeti,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     const baglantilar = canvas.getAllByRole('link', { name: 'İçeriğe atla' })
