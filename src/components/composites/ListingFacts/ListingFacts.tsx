@@ -10,6 +10,8 @@ import {
   type TourismFacilityAttributes,
 } from '../../../types/domain'
 import {
+  BOOLEAN_HAS_LABEL,
+  BOOLEAN_IS_LABEL,
   BUILDING_AGE_LABEL,
   BUILDING_ATTRIBUTE_LABEL,
   BUILDING_CONDITION_LABEL,
@@ -110,14 +112,19 @@ function para(deger: Money): string {
   return `${formatCurrency(deger)}${negotiableSuffix(deger)}`
 }
 
-/** `hasBalcony`, `hasElevator`, `hasOperatingLicense` gibi "sahip mi" alanları. */
+/**
+ * `hasBalcony`, `hasElevator`, `hasOperatingLicense` gibi "sahip mi" alanları.
+ *
+ * Metin `domain/labels.ts`'ten: aynı değerler filtre çubuğunda ve karşılaştırma
+ * tablosunda da görünecek.
+ */
 function varYok(deger: boolean): string {
-  return deger ? 'Var' : 'Yok'
+  return BOOLEAN_HAS_LABEL[`${deger}`]
 }
 
 /** `furnished`, `swapAccepted`, `inComplex` gibi "öyle mi" alanları. */
 function evetHayir(deger: boolean): string {
-  return deger ? 'Evet' : 'Hayır'
+  return BOOLEAN_IS_LABEL[`${deger}`]
 }
 
 /** Opsiyonel alan: değer yoksa satır kalır, değeri `—` olur (bkz. component JSDoc'u). */

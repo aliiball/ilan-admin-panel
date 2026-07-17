@@ -1,17 +1,11 @@
 import type { ReactNode } from 'react'
 import { Ban, Flag, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { UserStatus, UserType, type ISODateTime, type UserSanction } from '../../../types/domain'
 import {
-  SellerVerificationStatus,
-  UserStatus,
-  UserType,
-  type ISODateTime,
-  type UserSanction,
-} from '../../../types/domain'
-import {
-  SELLER_VERIFICATION_STATUS_LABEL,
   USER_SANCTION_TYPE_LABEL,
   USER_STATUS_LABEL,
   USER_TYPE_LABEL,
+  USER_VERIFICATION_LABEL,
 } from '../../../domain/labels'
 import { formatDate, formatDateTime, machineDateTime } from '../../../utils/formatDateTime'
 import { Avatar } from '../../primitives/Avatar'
@@ -71,24 +65,14 @@ const KURUMSAL_TIPLER: readonly UserType[] = [
 ]
 
 /**
- * Doğrulama etiketi — **geçici köprü, ikinci kez.**
+ * Doğrulama etiketi.
  *
- * `domain/labels.ts`'te hesap doğrulaması için sözlük yok: `USER_TYPE_LABEL` ve
- * `USER_STATUS_LABEL` var, `UserAccount.verified`'ınki yazılmamış. `UserSummaryCard`
- * aynı köprüyü kurarken bu component'in de aynı iki kelimeye ihtiyaç duyacağını
- * yazmıştı — duydu. Metin yine tek kaynaktan, `SELLER_VERIFICATION_STATUS_LABEL`'dan
- * okunuyor; buraya gömseydik aynı etiket iki dosyada ayrı yaşar, birinde değişip
- * diğerinde eski kalırdı.
- *
- * Köprü olduğu açık: o sözlük dört değerli `SellerVerificationStatus` için yazıldı,
- * `UserAccount.verified` ise iki değerli bir bayrak. Borç artık iki çağıranlı —
- * `domain/labels.ts`'e `USER_VERIFICATION_LABEL` eklenmesi gerekiyor (raporlandı);
- * eklendiğinde bu iki fonksiyonun gövdesi ona döner, çağrı yerleri değişmez.
+ * İki çağıranlı köprü kapandı: `USER_VERIFICATION_LABEL` eklendi ve söz
+ * verildiği gibi yalnız bu fonksiyonun **gövdesi** değişti — `UserSummaryCard`
+ * ile ikisi artık aynı iki kelimeyi aynı sözlükten okuyor.
  */
 function dogrulamaEtiketi(verified: boolean): string {
-  return SELLER_VERIFICATION_STATUS_LABEL[
-    verified ? SellerVerificationStatus.Verified : SellerVerificationStatus.Unverified
-  ]
+  return USER_VERIFICATION_LABEL[`${verified}`]
 }
 
 /**

@@ -68,6 +68,7 @@ export function ChartCard({
   toolbar,
   loading = false,
   error,
+  onRetry,
   empty = false,
   height = 'md',
 }: ChartCardProps) {
@@ -99,6 +100,7 @@ export function ChartCard({
             title={error.title}
             description={error.message}
             {...(error.code !== undefined && { code: error.code })}
+            {...(error.retryable && onRetry !== undefined && { onRetry })}
           />
         </div>
       )

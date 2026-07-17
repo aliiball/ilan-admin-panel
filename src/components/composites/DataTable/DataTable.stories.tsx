@@ -168,6 +168,41 @@ export const Error: Story = {
       retryable: true,
     },
   },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /*
+      `retryable: true` ama `onRetry` yok: buton çıkmamalı. İki kapı birden
+      açılmalı — bkz. `ErrorCanBeRetried`.
+    */
+    await expect(canvas.queryByRole('button', { name: 'Tekrar dene' })).not.toBeInTheDocument()
+    await expect(canvas.getByRole('alert')).toHaveTextContent('İlanlar yüklenemedi')
+  },
+}
+
+/**
+ * `onRetry` bağlıyken hata bloğu tekrar deneme butonu gösterir.
+ *
+ * Tablo sorguyu kendi atmaz; `ChartCardProps.onRetry` ile aynı sözleşme —
+ * ikisi tek kararın iki yüzü olduğu için birlikte eklendi.
+ */
+export const ErrorCanBeRetried: Story = {
+  args: {
+    visualStyle: 'bordered',
+    error: {
+      title: 'İlanlar yüklenemedi',
+      message: 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.',
+      code: 'NETWORK_TIMEOUT',
+      retryable: true,
+    },
+    onRetry: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Tekrar dene' }))
+    await expect(args.onRetry).toHaveBeenCalledTimes(1)
+  },
 }
 
 /**

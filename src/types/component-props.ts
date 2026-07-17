@@ -38,7 +38,8 @@ import type {
 } from './domain'
 
 export type ControlSize = 'sm' | 'md' | 'lg'
-export type AsyncStatus = 'idle' | 'loading' | 'empty' | 'success' | 'error'
+export type AsyncStatus =
+  'idle' | 'loading' | 'empty' | 'success' | 'partialSuccess' | 'unauthorized' | 'error'
 
 export interface UiError {
   title: string
@@ -47,10 +48,62 @@ export interface UiError {
   retryable: boolean
 }
 
+/**
+ * Bir ekranın veri durumu.
+ *
+ * `status` tek doğruluk kaynağıdır: aynı anda hem yükleniyor hem hatalı bir
+ * ekran yoktur. Durumlar bilerek ayrı, çünkü **her biri farklı bir şey
+ * yaptırır**: `empty` filtreyi gevşetmeyi, `error` tekrar denemeyi,
+ * `unauthorized` yetki istemeyi. Üçünü tek bir "veri yok" hâline indirmek
+ * kullanıcıya yanlış eylemi önerir.
+ */
 export type AsyncState<T> =
   | { status: 'idle' | 'loading' }
   | { status: 'empty'; data?: T }
   | { status: 'error'; error: UiError }
+  /**
+   * Kullanıcının bu veriyi görme yetkisi yok (HTTP 403).
+   *
+   * `error`'dan **ayrı bir durum**, çünkü ikisi farklı ekran ister: `error`
+   * "bir şey ters gitti, tekrar dene" der, bu ise "bu senin görebileceğin bir
+   * şey değil" der ve tekrar denemek hiçbir şeyi değiştirmez. `UiError.retryable`
+   * yalnız butonu gizlerdi; ekran yine "sunucu bozuldu" diye özür dilerdi.
+   * Brifing 3.5 `ListingListPage`, `SettingsPage` ve `AuditLogPage` için
+   * `Unauthorized` story'sini zorunlu tutuyor.
+   *
+   * `retryable` tip düzeyinde `false`'a sabitlendi: 403'ü tekrar denemek aynı
+   * 403'ü verir ve "tekrar dene" butonu kullanıcıyı döngüye sokar.
+   *
+   * Yetkisizliği **önden** bilen ekran buraya hiç gelmez: yetki kontrolü
+   * component'in işi değil, yetkisi olmayan kullanıcıya buton hiç render
+   * edilmez. Bu durum sunucunun reddettiği hâl içindir — istemcinin izin
+   * listesi bayatlamış olabilir.
+   */
+  | { status: 'unauthorized'; error: UiError & { retryable: false } }
+  /**
+   * Verinin bir kısmı geldi, bir kısmı gelmedi (brifing 2.2: "bazı grafikler
+   * yüklenemese de başarılı kartlar görünür").
+   *
+   * Dashboard KPI'ları ve her grafiği **bağımsız** sorgularla çekiyor; biri
+   * düşünce ötekileri ayakta kalmalı. Tek bir `error` bütün ekranı hata
+   * bloğuna çevirirdi — çalışan beş kartı, düşen bir grafik yüzünden gizlemek.
+   *
+   * `data` bilerek `Partial<T>`: gelmeyen alan **yok**, boş değil. Boş dizi
+   * koymak `empty` ile `error`'ı karıştırırdı — "bu aralıkta ilan yok" ile "ilan
+   * sayısı çekilemedi" kullanıcı için aynı şey değil ve `ChartCardProps.empty`
+   * tam da bu farkı ayırmak için var.
+   *
+   * `errors` `data` ile **aynı anahtar uzayını** kullanır: her alan için ya
+   * `data`'da değeri vardır ya `errors`'ta hatası. Anahtarların `keyof T`'ye
+   * bağlı olması, düşen grafiği doğru `ChartCard`'a yönlendirmeyi tip düzeyinde
+   * garantiler — düz bir `UiError[]` hangi hatanın hangi karta ait olduğunu
+   * söyleyemezdi.
+   */
+  | {
+      status: 'partialSuccess'
+      data: Partial<T>
+      errors: Partial<Record<keyof T & string, UiError>>
+    }
   | { status: 'success'; data: T; stale?: boolean }
 
 /**
@@ -1379,7 +1432,16 @@ export interface AppShellProps {
 }
 
 export interface BreadcrumbItem {
-  /** Görünür metin. Kırıntı yolu dar ekranda kısalır; etiketi kısa tutun. */
+  /**
+   * Görünür metin. Etiketi kısa tutun.
+   *
+   * **Dar ekranda kısalmaz, sarar** (`overflow-wrap: anywhere`). Kısaltma
+   * bilerek uygulanmadı: kırpılmış bir yol ("Kadıköy Merkez'de 3+1 De…")
+   * kullanıcıya hangi kayıtta olduğunu söylemez, sarma ise iki satır yer alıp
+   * bilginin tamamını verir — kırpma bilgi kaybettirir, sarma yalnız yer
+   * harcar. Etiketi kısa tutmak yine de çağıranın işi; sarma bir çözüm değil,
+   * güvenlik ağı.
+   */
   label: string
   /**
    * Hedef yol. Verilmezse öğe bağlantı değil, düz metin olur.
@@ -1416,8 +1478,17 @@ export interface PageHeaderProps {
   /**
    * İkincil eylemler ("Dışa aktar", "Yenile"). Ana eylemin solunda.
    *
-   * Dar ekranda taşarsa bir "…" menüsüne toplanır: mobilde beş buton yan yana
-   * durmaz.
+   * **Dar ekranda taşarsa alt satıra sarar; "…" menüsüne toplanmaz.** Prop opak
+   * bir `ReactNode` olduğu sürece toplanamaz da: başlık içinde kaç eylem
+   * olduğunu **sayamaz** (`Children.toArray` fragment/dizi/tek düğüm ayrımını
+   * tahmine bırakır), hangisinin taşacağını ölçemez ve hangisini menüye alacağını
+   * seçemez — üstelik repoda menü primitive'i yok (Select/MultiSelect var,
+   * DropdownMenu yok).
+   *
+   * Menü gerekiyorsa onu **sayfa katmanı kurar** ve buraya hazır geçer; sayfa
+   * kaç eylemi olduğunu bilen taraftır. Menüyü component'in işi yapmak isteniyorsa
+   * prop `PageHeaderAction[]` gibi **sayılabilir** bir sözleşmeye çevrilmeli ve
+   * bir menü primitive'i eklenmeli — ikisi bir arada, ayrı ayrı değil.
    */
   secondaryActions?: ReactNode
   /**
@@ -1489,6 +1560,18 @@ export interface DataTableProps<T extends { id: string }> {
   loading?: boolean
   /** Verilirse satırların yerine hata bloğu gösterilir ve `rows` yok sayılır. */
   error?: UiError
+  /**
+   * `error.retryable` iken hata bloğundaki "tekrar dene" butonunu çalıştırır.
+   *
+   * `error` ile **birlikte** verilmeli: `retryable: true` deyip bu kanalı
+   * bağlamamak, basınca hiçbir şey yapmayan bir buton çıkarırdı — bu yüzden
+   * tablo `onRetry` yoksa butonu **hiç göstermez**, `retryable` ne derse desin.
+   * (`ChartCardProps.onRetry` ile aynı kural; ikisi tek kararın iki yüzü.)
+   *
+   * Yokluğu bir durum (tekrar denenemeyen hata), dolayısıyla `meta.args`'a
+   * konmaz.
+   */
+  onRetry?: () => void
   /**
    * Kayıt yokken satırların yerine gösterilir. Verilmezse yalın bir "Kayıt
    * bulunamadı" yazar; filtre sonucu boşsa `EmptyState` ile filtreyi temizleme
@@ -1782,6 +1865,49 @@ export interface ModerationDecisionPayload {
   note?: string
 }
 
+/**
+ * Bir moderasyon kararının **reddedilme** sebebi.
+ *
+ * `AsyncState`'in bir üyesi **değil** ve olmamalı: `AsyncState` "veri geldi mi"
+ * sorusunu cevaplıyor, bu ise "gönderdiğim karar uygulandı mı" sorusunu. İlan
+ * detayı sorunsuz yüklenmişken (`status: 'success'`) karar reddedilebilir; ikisi
+ * aynı eksende olsaydı reddedilen bir karar, ekranda duran ilanı hata bloğuna
+ * çevirirdi.
+ *
+ * Brifing 3.5 `ApprovalQueue` ve `ListingReviewPanel` için `Conflict`
+ * story'sini zorunlu tutuyor; `ModerationActionBar` çakışmayı **tespit
+ * etmiyor**, `expectedRevision` damgasıyla tespit _edilebilir_ kılıyor —
+ * cevabı sunucu veriyor ve bu kanaldan geri geliyor.
+ */
+export type ModerationDecisionError =
+  /**
+   * Revizyon çakışması: moderatör kararı verirken ilan değişti.
+   *
+   * Kararın damgalandığı `expectedRevision` sunucudakiyle tutmadı, yani karar
+   * **artık var olmayan bir içeriğe** verilmiş. Tekrar denemek doğru değil:
+   * aynı damga aynı çakışmayı üretir, damgayı yenilemek ise görülmemiş bir
+   * içeriği onaylamak olur. Doğru eylem ilanı yeniden yüklemek ve **yeniden
+   * bakmak** — bu yüzden ayrı bir `kind`, `failed`'in bir alt hâli değil.
+   *
+   * Taslak (gerekçe + not) korunmalı: moderatörün yazdığı not, çakışma yüzünden
+   * kaybolmamalı.
+   */
+  | {
+      kind: 'revisionConflict'
+      /** Kararın damgalandığı revizyon — moderatörün gördüğü. */
+      expectedRevision: number
+      /** Sunucudaki güncel revizyon. `expectedRevision`'dan büyüktür. */
+      currentRevision: number
+    }
+  /**
+   * Karar uygulanamadı: ağ, sunucu ya da arada değişen yetki.
+   *
+   * Çakışmadan farkı, içeriğin hâlâ moderatörün gördüğü içerik olması —
+   * `UiError.retryable` ise aynı kararı yeniden göndermenin anlamlı olup
+   * olmadığını söyler.
+   */
+  | { kind: 'failed'; error: UiError }
+
 export interface ModerationActionBarProps {
   /** Karar verilecek ilan; `ModerationDecisionPayload.listingId` olarak geri döner. */
   listingId: string
@@ -1809,6 +1935,18 @@ export interface ModerationActionBarProps {
    * aynı anda iki karar göndermek, hangisinin son yazdığına bağlı bir sonuç üretir.
    */
   submittingAction?: 'approve' | 'reject' | 'requestChanges' | 'pause' | 'archive'
+  /**
+   * Son kararın **reddedildiğini** bildirir; çubuk sonucu kendi başına bilemez.
+   *
+   * Verilirse çubuk kararı uygulanmamış sayar: taslağı (gerekçe + not) tutar ve
+   * sebebi gösterir. `revisionConflict`'te tekrar göndermek çözüm olmadığı için
+   * kararı yeniden sunmaz — ilanın yeniden yüklenmesi gerekir, o da sayfanın
+   * işi.
+   *
+   * Yokluğu bir durum: karar gönderilmemiş ya da başarılı olmuştur. Bu yüzden
+   * `meta.args`'a **konmaz** (AGENTS.md, TS2375).
+   */
+  decisionError?: ModerationDecisionError
   /** Onay kararı. Kullanıcı onay dialog'unu geçtikten sonra çağrılır. */
   onApprove: (payload: ModerationDecisionPayload) => void | Promise<void>
   /** Red kararı. `reasons` en az bir üye, `note` dolu gelir — çubuk ikisini toplamadan çağırmaz. */
@@ -1958,9 +2096,26 @@ export interface ChartCardProps {
    * Kartın kendi hata kanalı var çünkü dashboard'da grafikler bağımsız yüklenir:
    * biri düşerken diğerleri ve KPI kartları ayakta kalmalı (brifing 2.2'nin
    * `partialSuccess` durumu). `UiError.retryable` tekrar denenip denenemeyeceğini
-   * söyler.
+   * söyler, `onRetry` ise onu eyleme çevirir.
    */
   error?: UiError
+  /**
+   * `error.retryable` iken hata bloğundaki "tekrar dene" butonunu çalıştırır.
+   *
+   * `AsyncState`'in `partialSuccess`'i tam da bunun için var: düşen grafiğin
+   * hatası `errors[alan]`'dan gelir, tekrar denemesi de yalnız o alanın
+   * sorgusunu tazeler — bütün dashboard'ı değil.
+   *
+   * Kanal yokken `retryable`'ın JSDoc'u tutulamayan bir söz veriyordu: kart
+   * `ErrorState`'i `onRetry`'siz çağırdığı için buton hiç çıkmıyordu
+   * (`ErrorHasNoRetryButton` bunu ölçüyor). Kural aynı kalıyor —
+   * **`onRetry` yoksa buton yok**, `retryable` ne derse desin; basınca bir şey
+   * yapmayan buton koymaktansa doğrusu bu. `DataTableProps.onRetry` ile
+   * birlikte kararlaştırıldı.
+   *
+   * Yokluğu bir durum, dolayısıyla `meta.args`'a konmaz.
+   */
+  onRetry?: () => void
   /**
    * Boş durumu zorlar: seçilen aralıkta veri yok.
    *
@@ -2421,6 +2576,19 @@ export interface UserSummaryCardProps {
    * - `security`: son giriş, doğrulama ve aktif yaptırım öne çıkar. Yaptırım
    *   kararı verilirken bakılan yüz.
    *
+   * **`security` bir yetki kapısıdır, yalnız bir düzen değil:** tam görünüm
+   * odur ve `AdminPermission.UserView` ister. `destek` rolü yalnız
+   * `UserViewProfile`'a sahiptir (brifing 1.4: "Kullanıcı görüntüleme" ×
+   * `destek` = "Sınırlı") ve bu varyantı **görmemelidir** — ayıran ilke
+   * "destek durumu açıklar, moderatör durumu belirler". Kart yetki bilmez;
+   * varyantı seçen sayfa katmanı **önce `UserView`'u** sınamalı, yoksa
+   * `UserViewProfile`'a düşmeli (kademe kapsayıcı — `superAdmin` ikisine de
+   * sahip, ters sıra ona daraltılmış görünüm gösterir).
+   *
+   * Sınırlı görünümde gizlenecekler `AdminPermission.UserViewProfile`'ın
+   * JSDoc'unda alan alan yazılı; kartın bugün gösterdiklerinden `lastLoginAt`
+   * ve `adminRole` o listede.
+   *
    * @default 'compact'
    */
   variant?: 'compact' | 'detailed' | 'security'
@@ -2806,6 +2974,13 @@ export interface ListingReviewPanelProps {
   state: AsyncState<ListingReviewData>
   capabilities: ModerationCapabilities
   submittingAction?: ModerationActionBarProps['submittingAction']
+  /**
+   * Karar çubuğuna geçirilir; brifing 3.5'in `Conflict` story'si budur.
+   *
+   * `state` ile aynı eksende **değil**: ilan başarıyla yüklenmişken karar
+   * reddedilebilir — bkz. `ModerationDecisionError`.
+   */
+  decisionError?: ModerationActionBarProps['decisionError']
   onApprove: ModerationActionBarProps['onApprove']
   onReject: ModerationActionBarProps['onReject']
   onRequestChanges: ModerationActionBarProps['onRequestChanges']

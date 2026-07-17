@@ -1,17 +1,12 @@
 import type { ReactNode } from 'react'
 import { Ban, Flag, ShieldAlert, ShieldCheck } from 'lucide-react'
-import {
-  SellerVerificationStatus,
-  UserStatus,
-  type ISODateTime,
-  type UserSanction,
-} from '../../../types/domain'
+import { UserStatus, type ISODateTime, type UserSanction } from '../../../types/domain'
 import {
   ADMIN_ROLE_LABEL,
-  SELLER_VERIFICATION_STATUS_LABEL,
   USER_SANCTION_TYPE_LABEL,
   USER_STATUS_LABEL,
   USER_TYPE_LABEL,
+  USER_VERIFICATION_LABEL,
 } from '../../../domain/labels'
 import { formatDate, formatDateTime, machineDateTime } from '../../../utils/formatDateTime'
 import { Avatar } from '../../primitives/Avatar'
@@ -57,24 +52,15 @@ const AVATAR_BOYUTU = {
 } as const satisfies Record<NonNullable<UserSummaryCardProps['variant']>, 'md' | 'lg'>
 
 /**
- * Doğrulama etiketi — **geçici köprü.**
+ * Doğrulama etiketi.
  *
- * `domain/labels.ts`'te hesap doğrulaması için bir sözlük **yok**:
- * `USER_TYPE_LABEL`/`USER_STATUS_LABEL` var, doğrulamanınki yazılmamış. Metni
- * buraya gömmek kuralı deler ve borcu büyütürdü — aynı iki kelimeye `SellerPanel`
- * de ihtiyaç duyacak (brifing 3.4: "Verified, unverified, suspended, risky") ve
- * iki yerde ayrı yazılan etiket birinde değişip diğerinde eski kalırdı.
- *
- * Bu yüzden metin tek kaynaktan, `SELLER_VERIFICATION_STATUS_LABEL`'dan okunuyor.
- * Köprü olduğu açık: o sözlük `SellerSummary.verificationStatus` için yazılmış
- * dört değerli bir enum'u etiketliyor, `UserAccount.verified` ise iki değerli bir
- * bayrak. `USER_VERIFICATION_LABEL` eklenince bu fonksiyonun gövdesi ona döner,
- * çağrı yerleri değişmez.
+ * Köprü kaldırıldı: `USER_VERIFICATION_LABEL` eklenene kadar bu fonksiyon
+ * `SELLER_VERIFICATION_STATUS_LABEL`'ın dört değerli enum'undan okuyordu —
+ * `UserAccount.verified` iki değerli bir bayrak olduğu için yanlışlık ekranda
+ * değil tipte görünüyordu. Söz verildiği gibi yalnız **gövde** değişti.
  */
 function dogrulamaEtiketi(verified: boolean): string {
-  return SELLER_VERIFICATION_STATUS_LABEL[
-    verified ? SellerVerificationStatus.Verified : SellerVerificationStatus.Unverified
-  ]
+  return USER_VERIFICATION_LABEL[`${verified}`]
 }
 
 /**

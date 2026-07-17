@@ -411,6 +411,8 @@ export const ADMIN_PERMISSION_LABEL = {
   [AdminPermission.ListingAddNote]: 'Moderasyon notu ekleme',
   [AdminPermission.PromotionManage]: 'Promosyon yönetme',
   [AdminPermission.UserView]: 'Kullanıcı görüntüleme',
+  [AdminPermission.UserViewProfile]:
+    'Kullanıcı görüntüleme (sınırlı: iç gerekçe, yaptırım geçmişi ve oturum bilgisi görünmez)',
   [AdminPermission.UserEdit]: 'Kullanıcı bilgisi düzenleme',
   [AdminPermission.UserEditProfile]:
     'Kullanıcı bilgisi düzenleme (sınırlı: ad, e-posta, telefon, avatar, firma adı)',
@@ -509,6 +511,61 @@ export const USER_TYPE_LABEL = {
   [UserType.ConstructionCompany]: 'İnşaat Firması',
   [UserType.Admin]: 'Yönetici',
 } satisfies Record<UserType, string>
+
+/**
+ * Hesap doğrulaması (`UserAccount.verified`) — **iki değerli bir bayrak**.
+ *
+ * `SELLER_VERIFICATION_STATUS_LABEL` ile karıştırılmamalı: o `SellerSummary.
+ * verificationStatus` için yazılmış **dört değerli** bir enum'u etiketliyor
+ * (`Pending` ve `Rejected` de var), bu ise hesabın açık/kapalı bayrağını.
+ * Metinler iki değerde bilerek birebir aynı — kullanıcı için "Doğrulanmış" her
+ * iki ekranda da aynı şeydir; ayrı duran şey tip, kelime değil.
+ *
+ * UserSummaryCard ve SellerPanel bu sözlük yokken o dörtlüden **köprü** kuruyor
+ * (`verified ? Verified : Unverified`) ve köprülüğü JSDoc'ta açıkça yazıyordu:
+ * yanlışlık ekranda değil tipte görünüyordu, çünkü `boolean` bir alanı dört
+ * üyeli bir enum üzerinden etiketlemek o alana olmayan bir üçüncü hâl ima eder.
+ * Köprüler kaldırıldı; çağrı yerleri değişmedi.
+ */
+export const USER_VERIFICATION_LABEL = {
+  true: 'Doğrulanmış',
+  false: 'Doğrulanmamış',
+} satisfies Record<`${boolean}`, string>
+
+/**
+ * "Sahip mi" alanlarının değeri: `hasBalcony`, `hasElevator`,
+ * `hasOperatingLicense`, `hasSeaView`…
+ *
+ * Türkçede bir niteliğin **varlığı** ile bir önermenin **doğruluğu** aynı
+ * kelimeyle söylenmez: balkon "Var"dır, "Evet" değil; eşyalı olmak ise
+ * "Evet"tir, "Var" değil. Bu yüzden iki sözlük — `BOOLEAN_IS_LABEL` ile ayrımı
+ * için ona bak. İngilizcede tek bir "Yes/No" ikisini de karşıladığı için bu
+ * ayrımı kaçırmak kolay; kaçırılınca ilan detayında "Asansör: Evet" yazar.
+ *
+ * Anahtar `boolean` değil `` `${boolean}` ``: nesne anahtarları dizedir ve
+ * `Record<boolean, string>` `{ true: …, false: … }` ile eşleşse de indeksleme
+ * `sözlük[String(deger)]` biçiminde yazılır. Şablon dize tipi bunu dürüstçe
+ * söylüyor.
+ */
+export const BOOLEAN_HAS_LABEL = {
+  true: 'Var',
+  false: 'Yok',
+} satisfies Record<`${boolean}`, string>
+
+/**
+ * "Öyle mi" alanlarının değeri: `furnished`, `swapAccepted`, `inComplex`,
+ * `transferIncluded`…
+ *
+ * `BOOLEAN_HAS_LABEL`'ın kardeşi; farkı ve gerekçesi orada. İkisi ListingFacts'in
+ * içinde iki yerel yardımcıydı (`varYok`/`evetHayir`); aynı metinler filtre
+ * çubuğunda ve karşılaştırma tablosunda da görünecek, üstelik "bu alan Var/Yok
+ * mu yoksa Evet/Hayır mı" kararı component'ten component'e savrulamaz — aynı
+ * alan iki ekranda iki türlü okunurdu.
+ */
+export const BOOLEAN_IS_LABEL = {
+  true: 'Evet',
+  false: 'Hayır',
+} satisfies Record<`${boolean}`, string>
 
 export const USER_STATUS_LABEL = {
   [UserStatus.PendingVerification]: 'Doğrulama Bekliyor',
