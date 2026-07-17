@@ -636,7 +636,44 @@ export enum AdminPermission {
   ListingAddNote = 'listing:addNote',
   PromotionManage = 'promotion:manage',
 
+  /**
+   * Kullanıcı hesabının **tam** görüntülenmesi — iç gerekçeler, yaptırım
+   * geçmişi ve oturum bilgisi dahil.
+   *
+   * Brifing 1.4 matrisi "Kullanıcı görüntüleme" satırında `moderator` ve
+   * `superAdmin`'e "Tam", `destek`'e **"Sınırlı"** diyor. Bu yüzden `destek`
+   * bunu almaz; `UserViewProfile` ile daraltılmış görünümü alır.
+   */
   UserView = 'user:view',
+  /**
+   * Kullanıcı hesabının **sınırlı** görüntülenmesi — müşteriye anlatılabilen
+   * yüz.
+   *
+   * Brifing 1.4 matrisinin "Kullanıcı görüntüleme" × `destek` hücresi. Matris
+   * hangi alanların gizleneceğini söylemiyordu; kapsam kullanıcıya soruldu ve
+   * onaylandı. Ayıran ilke: **destek durumu açıklar, moderatör durumu
+   * belirler.** Destek "hesabınız 29 Temmuz'a kadar askıda" diyebilmeli;
+   * "neden askıya alındığı"nı okumak kararı veren rolün işi.
+   *
+   * Görünür: ad, avatar, tip, firma, `verified`, e-posta, telefon (destek
+   * zaten `UserEditContact` ile düzenleyebiliyor — göremediğini düzenlemek
+   * anlamsız), `status` + yürürlükteki yaptırımın `endsAt`'i, `createdAt`,
+   * ilan sayaçları, `reportCount`, kullanıcının kendi ilanları.
+   *
+   * Gizli: `UserSanction.reason` (iç gerekçe metni — müşteriye okunacak cümle
+   * değil), yaptırım geçmişi ve `createdByAdminId` (kimin karar verdiği iç
+   * bilgi), `lastLoginAt` (oturum takibi destek işi değil), `adminRole`.
+   *
+   * `UserSummaryCard`'ın `security` varyantı = tam görünüm; `destek` onu
+   * görmez.
+   *
+   * `UserView`'un alt kümesidir ve **kademeler dışlayıcı değil, kapsayıcıdır:**
+   * `superAdmin` ikisine birden sahiptir. "Bu kullanıcı sınırlı mı?" sorusu
+   * `includes(UserViewProfile)` ile **cevaplanamaz** — önce `UserView`
+   * sınanmalı, sonra buna düşülmeli; tersi `superAdmin`'e daraltılmış görünüm
+   * gösterir. Aynı desen: `UserEditContact`, `ReportTriageLimited`.
+   */
+  UserViewProfile = 'user:viewProfile',
   /**
    * Kullanıcı bilgisinin **tam** düzenlenmesi — hesap durumu ve doğrulama dahil
    * her alan.
@@ -742,6 +779,7 @@ export const ALL_ADMIN_PERMISSIONS = [
   AdminPermission.ListingAddNote,
   AdminPermission.PromotionManage,
   AdminPermission.UserView,
+  AdminPermission.UserViewProfile,
   AdminPermission.UserEdit,
   AdminPermission.UserEditProfile,
   AdminPermission.UserEditContact,
@@ -764,11 +802,12 @@ export const ALL_ADMIN_PERMISSIONS = [
 /**
  * Rol → izin eşlemesi; brifing 1.4 yetki matrisinin birebir karşılığı.
  *
- * Matrisin üç "Sınırlı" hücresi enum'da karşılıksızdı ve bu tablo onları **"Tam"
- * okumuştu**: `moderator` ile `destek` `UserEdit`'e, `icerikDenetcisi`
- * `ReportTriage`'a sahip görünüyordu — yani matris sınırlarken kod tam yetki
- * veriyordu. Üçü de daraltılmış izinlerle (`UserEditProfile`, `UserEditContact`,
- * `ReportTriageLimited`) değiştirildi.
+ * Matrisin **dört** "Sınırlı" hücresi enum'da karşılıksızdı ve bu tablo hepsini
+ * **"Tam" okumuştu**: `moderator` ile `destek` `UserEdit`'e, `icerikDenetcisi`
+ * `ReportTriage`'a, `destek` `UserView`'a sahip görünüyordu — yani matris
+ * sınırlarken kod tam yetki veriyordu. Dördü de daraltılmış izinlerle
+ * (`UserEditProfile`, `UserEditContact`, `ReportTriageLimited`,
+ * `UserViewProfile`) değiştirildi. Matrisin "Sınırlı" hücresi kalmadı.
  *
  * Kademeler kapsayıcıdır: `superAdmin` hem tam hem sınırlı izne sahiptir. Yetki
  * sınayan kod **önce tamını** sorsun (bkz. `AdminPermission.UserEditContact`).
@@ -824,9 +863,8 @@ export const ROLE_PERMISSIONS = {
     AdminPermission.DashboardView,
     AdminPermission.ListingView,
     AdminPermission.ListingAddNote,
-    // Matris: "Kullanıcı görüntüleme" = Sınırlı. Kapsam sorulmadı, karar
-    // verilmedi; şimdilik tam `UserView` duruyor — açık borç.
-    AdminPermission.UserView,
+    // Matris: "Kullanıcı görüntüleme" = Sınırlı. Tam `UserView` değil.
+    AdminPermission.UserViewProfile,
     // Matris: "Kullanıcı bilgisi düzenleme" = Sınırlı destek alanları.
     AdminPermission.UserEditContact,
     AdminPermission.ReportView,
