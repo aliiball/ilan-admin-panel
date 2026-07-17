@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import type { ToastProps } from '../../../types/component-props'
@@ -19,6 +19,22 @@ const TONE_ICON = {
   danger: XCircle,
   info: Info,
 } as const
+
+/*
+  Portal ayrı bir component olmak zorunda: `createPortal(...)` sonucunu doğrudan
+  `return` eden fonksiyona react-docgen "No suitable component definition found"
+  deyip **dosyanın tamamını atlıyor**. Toast'ın yedi prop'u belgeli olduğu hâlde
+  ne Controls'ta ne AI manifest'inde görünüyordu — `@/` tuzağının aynısı, sebebi
+  farklı. Toast artık gerçek JSX döndüğü için docgen onu buluyor.
+
+  Story testiyle korunamaz: `__docgenInfo`'yu docgen plugin'i yalnız `storybook
+  build`/`dev` sırasında iliştiriyor, vitest ortamında tanımsız. Ölçmenin yolu
+  AGENTS.md'deki manifest sayım betiği — orada Toast'ın `error` alanı boş ve
+  prop sayısı 7 olmalı.
+*/
+function Portal({ children }: { children: ReactNode }) {
+  return createPortal(children, document.body)
+}
 
 /**
  * Geçici işlem geri bildirimi: kaydetme, onaylama, reddetme sonucu.
@@ -65,45 +81,46 @@ export function Toast({
 
   if (!open || typeof document === 'undefined') return null
 
-  return createPortal(
-    <div className={viewport}>
-      <div
-        className={toast({ tone })}
-        role={isError ? 'alert' : 'status'}
-        aria-live={isError ? 'assertive' : 'polite'}
-        onMouseEnter={() => {
-          pausedRef.current = true
-        }}
-        onMouseLeave={() => {
-          pausedRef.current = false
-        }}
-      >
-        <span className={icon} aria-hidden="true">
-          <ToneIcon size={20} />
-        </span>
-
-        <div className={content}>
-          <span className={titleClass}>{title}</span>
-          {description !== undefined ? (
-            <span className={descriptionClass}>{description}</span>
-          ) : null}
-          {action !== undefined ? (
-            <button type="button" className={actionClass} onClick={action.onClick}>
-              {action.label}
-            </button>
-          ) : null}
-        </div>
-
-        <button
-          type="button"
-          className={close}
-          onClick={() => onOpenChange(false)}
-          aria-label="Bildirimi kapat"
+  return (
+    <Portal>
+      <div className={viewport}>
+        <div
+          className={toast({ tone })}
+          role={isError ? 'alert' : 'status'}
+          aria-live={isError ? 'assertive' : 'polite'}
+          onMouseEnter={() => {
+            pausedRef.current = true
+          }}
+          onMouseLeave={() => {
+            pausedRef.current = false
+          }}
         >
-          <X size={16} aria-hidden="true" />
-        </button>
+          <span className={icon} aria-hidden="true">
+            <ToneIcon size={20} />
+          </span>
+
+          <div className={content}>
+            <span className={titleClass}>{title}</span>
+            {description !== undefined ? (
+              <span className={descriptionClass}>{description}</span>
+            ) : null}
+            {action !== undefined ? (
+              <button type="button" className={actionClass} onClick={action.onClick}>
+                {action.label}
+              </button>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            className={close}
+            onClick={() => onOpenChange(false)}
+            aria-label="Bildirimi kapat"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
       </div>
-    </div>,
-    document.body,
+    </Portal>
   )
 }
