@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, fn, userEvent, within } from 'storybook/test'
+import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
 import type { SelectOption } from '../../../types/component-props'
 import { Select } from './Select'
 
@@ -155,6 +155,28 @@ export const Interactive: Story = {
   },
 }
 
+/**
+ * Popup'ın kapanmasını beklemek — `a11y.test: 'error'` ile **şart**.
+ *
+ * Base UI popup açıkken odak tuzağı için `aria-hidden="true"` + `tabindex="0"`
+ * taşıyan koruma span'leri (`data-base-ui-focus-guard`) basıyor. Bunlar kasıtlı
+ * ve popup'ın ömrüyle sınırlı, ama axe için `aria-hidden-focus` ihlali.
+ *
+ * Play bittiğinde axe çalışıyor; popup'ın **kapanma animasyonu** o an hâlâ
+ * sürüyorsa korumalar DOM'da duruyor ve story yazı-tura düşüyor (ölçüldü: beş
+ * koşuda üç düşüş). Kapanmayı beklemek DOM'u oturtuyor, yani ihlal ne gerçek bir
+ * kusur ne de muafiyet konusu — **testin kendi bıraktığı artık**.
+ *
+ * Kural: **`a11y.test: 'error'` iken play, DOM'u oturmuş bırakmalı.** Portal
+ * açan (Select, MultiSelect, Modal, Drawer, Popover, Tooltip) her yeni story bu
+ * tuzağa girebilir; `waitFor` ile kapanışı beklemek tek satırlık bedeli.
+ */
+async function popupKapanmasiniBekle(): Promise<void> {
+  await waitFor(() =>
+    expect(document.querySelector('[data-base-ui-focus-guard]')).not.toBeInTheDocument(),
+  )
+}
+
 /** Liste gerçekten açılıp seçim yapılabiliyor mu? */
 export const OpensAndSelects: Story = {
   play: async ({ canvasElement, args }) => {
@@ -169,6 +191,7 @@ export const OpensAndSelects: Story = {
     await userEvent.click(option)
 
     await expect(args.onValueChange).toHaveBeenCalledWith('arsa')
+    await popupKapanmasiniBekle()
   },
 }
 
@@ -226,6 +249,8 @@ export const ResetToUndefinedAllowsRepick: Story = {
     await userEvent.click(canvas.getByRole('combobox'))
     await userEvent.click(await body.findByRole('option', { name: /Arsa/ }))
     await expect(canvas.getByText('Seçili: arsa')).toBeInTheDocument()
+
+    await popupKapanmasiniBekle()
   },
 }
 
