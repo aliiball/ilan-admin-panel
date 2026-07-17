@@ -39,6 +39,10 @@ export default defineConfig({
       'lucide-react',
       'react-day-picker',
       'react-day-picker/locale',
+      // ChartCard'ın story'leri reponun ilk recharts tüketicisi. Bildirilmezse
+      // yukarıdaki senaryonun aynısı: sıcak cache'te ilk test çalıştırması
+      // "Failed to fetch dynamically imported module" ile patlar.
+      'recharts',
       // Base UI alt yolları tek tek bildirilir: paket subpath export kullandığı için
       // toptan bildirim mümkün değil. YENİ PRIMITIVE EKLERKEN alt yolunu buraya da ekleyin,
       // yoksa sıcak cache'te ilk test çalıştırması "Failed to fetch dynamically imported
