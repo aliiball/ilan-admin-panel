@@ -34,11 +34,21 @@ export const tag = recipe({
       },
     },
 
+    /**
+     * Devre dışı görünüm zemin + `cursor` ile kurulur, metni soldurarak değil.
+     *
+     * `text.disabled` burada **yanlış token'dı**: WCAG'in düşük kontrastı
+     * bağışladığı yer "etkin olmayan kontrol"dür, oysa Tag bir `<span>` —
+     * etiketi ("Kadıköy") devre dışı bir kontrolün parçası değil, düpedüz
+     * okunması gereken metin. Yalnız içindeki kaldırma butonu gerçekten
+     * `disabled` ve o zaten muaf. Ölçüm: n-500/n-200 3.86 (AA'dan düşük),
+     * `text.muted` ile 6.15 (sıcak amber 6.08).
+     */
     disabled: {
       true: {
         background: vars.color.bg.disabled,
         borderColor: vars.color.border.subtle,
-        color: vars.color.text.disabled,
+        color: vars.color.text.muted,
         cursor: 'not-allowed',
       },
       false: {},

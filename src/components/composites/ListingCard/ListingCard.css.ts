@@ -97,13 +97,18 @@ export const image = style({
 })
 
 /** Fotoğrafsız ilan: kırık resim yerine açık bir "görsel yok" durumu. */
+/**
+ * "Görsel yok" bir yer tutucu **metni**, devre dışı bir kontrol değil: ilanın
+ * fotoğrafsız olduğunu söyleyen tek işaret bu. `text.disabled` ile n-100 zemin
+ * üstünde 4.34 kalıyordu (AA 4.5); `text.muted` ile 6.92 (sıcak amber 6.99).
+ */
 export const noPhoto = style({
   display: 'grid',
   placeItems: 'center',
   width: '100%',
   height: '100%',
   minHeight: '5rem',
-  color: vars.color.text.disabled,
+  color: vars.color.text.muted,
   gap: vars.space[1],
   fontSize: vars.font.size.sm,
   textAlign: 'center',

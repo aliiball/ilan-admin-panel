@@ -79,16 +79,33 @@ export const vars = createGlobalThemeContract(
       selection: { bg: null },
       table: { rowHover: null },
 
-      /** Her ListingStatus için ayrı görsel durum — brifing kabul kriteri. */
+      /**
+       * Her ListingStatus için ayrı görsel durum — brifing kabul kriteri.
+       *
+       * Dört slot, üç farklı kontrast borcu taşır ve **birbirinin yerine
+       * geçmez:**
+       *
+       * - `bg` + `text`: açık zemin üstünde koyu metin (soft rozet). Metin
+       *   olduğu için 4.5:1 borçlu (WCAG 1.4.3).
+       * - `border`: yalnız **kenarlık ve nokta**. Metin değil, grafik sınır —
+       *   yalnız 3:1 borçlu (WCAG 1.4.11).
+       * - `solid`: koyu zemin üstünde **beyaz metin** (solid rozet). Metin
+       *   zemini olduğu için 4.5:1 borçlu.
+       *
+       * `solid` ayrı bir slot çünkü `border`'ı zemin olarak kullanmak tam da
+       * bu iki borcu karıştırıyordu: 3:1'lik bir kenarlık rengi 4.5:1'lik bir
+       * metin zemini yerine geçince dört durum (draft/pending/changes/
+       * published) AA'dan düşüyordu. Ölçüm ve gerekçe AGENTS.md'de.
+       */
       status: {
-        draft: { bg: null, text: null, border: null },
-        pending: { bg: null, text: null, border: null },
-        changes: { bg: null, text: null, border: null },
-        published: { bg: null, text: null, border: null },
-        rejected: { bg: null, text: null, border: null },
-        paused: { bg: null, text: null, border: null },
-        expired: { bg: null, text: null, border: null },
-        archived: { bg: null, text: null, border: null },
+        draft: { bg: null, text: null, border: null, solid: null },
+        pending: { bg: null, text: null, border: null, solid: null },
+        changes: { bg: null, text: null, border: null, solid: null },
+        published: { bg: null, text: null, border: null, solid: null },
+        rejected: { bg: null, text: null, border: null, solid: null },
+        paused: { bg: null, text: null, border: null, solid: null },
+        expired: { bg: null, text: null, border: null, solid: null },
+        archived: { bg: null, text: null, border: null, solid: null },
       },
     },
 

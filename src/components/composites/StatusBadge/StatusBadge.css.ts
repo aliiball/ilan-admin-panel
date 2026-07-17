@@ -2,10 +2,17 @@ import { createVar, style } from '@vanilla-extract/css'
 import { recipe } from '@vanilla-extract/recipes'
 import { vars } from '@/tokens/contract.css'
 
-/** Durumun rengi önce yerel değişkenlere yazılır, varyantlar bunları okur. */
+/**
+ * Durumun rengi önce yerel değişkenlere yazılır, varyantlar bunları okur.
+ *
+ * `durumBorder` ile `durumSolid` ayrı: kenarlık 3:1 borçlu bir grafik sınır,
+ * solid zemin ise beyaz metin taşıdığı için 4.5:1 borçlu. Solid zemini
+ * `durumBorder`'dan okumak dört durumu AA'dan düşürüyordu (bkz. contract.css.ts).
+ */
 const durumBg = createVar()
 const durumText = createVar()
 const durumBorder = createVar()
+const durumSolid = createVar()
 
 export const statusBadge = recipe({
   base: {
@@ -27,6 +34,7 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.draft.bg,
           [durumText]: vars.color.status.draft.text,
           [durumBorder]: vars.color.status.draft.border,
+          [durumSolid]: vars.color.status.draft.solid,
         },
       },
       pendingReview: {
@@ -34,6 +42,7 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.pending.bg,
           [durumText]: vars.color.status.pending.text,
           [durumBorder]: vars.color.status.pending.border,
+          [durumSolid]: vars.color.status.pending.solid,
         },
       },
       changesRequested: {
@@ -41,6 +50,7 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.changes.bg,
           [durumText]: vars.color.status.changes.text,
           [durumBorder]: vars.color.status.changes.border,
+          [durumSolid]: vars.color.status.changes.solid,
         },
       },
       published: {
@@ -48,6 +58,7 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.published.bg,
           [durumText]: vars.color.status.published.text,
           [durumBorder]: vars.color.status.published.border,
+          [durumSolid]: vars.color.status.published.solid,
         },
       },
       rejected: {
@@ -55,6 +66,7 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.rejected.bg,
           [durumText]: vars.color.status.rejected.text,
           [durumBorder]: vars.color.status.rejected.border,
+          [durumSolid]: vars.color.status.rejected.solid,
         },
       },
       paused: {
@@ -62,6 +74,7 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.paused.bg,
           [durumText]: vars.color.status.paused.text,
           [durumBorder]: vars.color.status.paused.border,
+          [durumSolid]: vars.color.status.paused.solid,
         },
       },
       expired: {
@@ -69,6 +82,7 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.expired.bg,
           [durumText]: vars.color.status.expired.text,
           [durumBorder]: vars.color.status.expired.border,
+          [durumSolid]: vars.color.status.expired.solid,
         },
       },
       archived: {
@@ -76,12 +90,13 @@ export const statusBadge = recipe({
           [durumBg]: vars.color.status.archived.bg,
           [durumText]: vars.color.status.archived.text,
           [durumBorder]: vars.color.status.archived.border,
+          [durumSolid]: vars.color.status.archived.solid,
         },
       },
     },
 
     variant: {
-      solid: { background: durumBorder, color: vars.color.neutral[0] },
+      solid: { background: durumSolid, color: vars.color.neutral[0] },
       soft: { background: durumBg, color: durumText },
       outline: { background: 'transparent', color: durumText, borderColor: durumBorder },
     },

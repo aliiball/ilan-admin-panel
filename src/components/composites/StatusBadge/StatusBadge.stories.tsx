@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
 import { ListingStatus } from '../../../types/domain'
 import { allListingFixtures } from '../../../fixtures'
 import { StatusBadge } from './StatusBadge'
@@ -127,4 +128,37 @@ export const VariantsComparison: Story = {
       ))}
     </div>
   ),
+}
+
+/**
+ * Brifingin "tüm ListingStatus değerleri ayrı görsel durumla temsil
+ * edilmelidir" kriteri, rozetin en yoğun kullanılan varyantında **ölçülerek**.
+ *
+ * `AllStatuses` bu kriterin görsel kanıtıydı ama hiçbir şey saymıyordu ve
+ * kriter solid'de sessizce çiğneniyordu: `paused` ile `archived` zeminlerini
+ * `status.*.border`'dan okuyordu, ikisi de neutral-600'e düşüyordu ve sekiz
+ * durum yedi zemin üretiyordu. Sözleşmeye ayrı bir `solid` slotu eklenince
+ * kademe (draft 500 → paused 600 → arşiv 700) geri geldi.
+ *
+ * Token'ı değil **hesaplanmış zemini** ölçüyor: token'ı okumak sözleşmenin
+ * kendisiyle aynı şeyi iki kez söylemek olurdu, oysa kırılan şey token'ın
+ * component'te nasıl bağlandığıydı.
+ */
+export const SolidGivesEightDistinctBackgrounds: Story = {
+  render: (args) => (
+    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', maxWidth: '42rem' }}>
+      {TUM_DURUMLAR.map((status) => (
+        <StatusBadge key={status} {...args} status={status} variant="solid" />
+      ))}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const rozetler = within(canvasElement).getAllByText(/.+/, {
+      selector: '[data-variant="solid"]',
+    })
+    expect(rozetler).toHaveLength(TUM_DURUMLAR.length)
+
+    const zeminler = rozetler.map((r) => getComputedStyle(r).backgroundColor)
+    expect(new Set(zeminler).size).toBe(TUM_DURUMLAR.length)
+  },
 }

@@ -189,31 +189,57 @@ createGlobalTheme(':root', vars, {
     selection: { bg: vars.color.primary[100] },
     table: { rowHover: vars.color.neutral[100] },
 
+    /**
+     * `solid` kademesi (Faz 2 kapanışı, kullanıcı onayladı).
+     *
+     * Solid rozet zeminini `border`'dan okuyordu; kenarlık rengi 3:1'e göre
+     * seçilmiş olduğu için beyaz metin altında dört durum AA'dan düşüyordu
+     * (draft 2.56, pendingReview 3.18, changesRequested 4.09, published 3.29).
+     * Alternatif — 600'leri toptan koyulaştırmak — reddedildi: 600'ler ağırlıkla
+     * kenarlık/nokta/iz olarak kullanılıyor (31 yer) ve onlar zaten 3:1 ile
+     * geçiyordu; üstelik neutral-400'ü 4.5'e çekmek onu neutral-500'e yapıştırıp
+     * rampadan bir basamak siliyordu.
+     *
+     * Kademenin ölçülen oranları (beyaz metin, AA eşiği 4.5):
+     * draft 4.76 · pending 5.02 · changes 5.93 · published 5.02 · rejected 6.47
+     * · paused 7.58 · expired 7.09 · archived 10.35. Sıcak amber'da nötrler
+     * taş tonuna kayar: draft 4.80 · paused 7.63 · archived 10.27.
+     *
+     * Sekiz durum sekiz ayrı zemin üretir. Bunu **koru**: `paused` ile
+     * `archived` eskiden ikisi de neutral-600'e düşüyor ve solid'de aynı
+     * görünüyordu (7/8) — brifingin "her ListingStatus ayrı görsel durum"
+     * kriterini rozetin en yoğun kullanıldığı varyantta çiğniyordu.
+     */
     status: {
       draft: {
         bg: vars.color.neutral[100],
         text: vars.color.neutral[800],
         border: vars.color.neutral[400],
+        solid: vars.color.neutral[500],
       },
       pending: {
         bg: vars.color.warning[50],
         text: vars.color.warning[800],
         border: vars.color.warning[600],
+        solid: vars.color.warning[700],
       },
       changes: {
         bg: vars.color.info[50],
         text: vars.color.info[800],
         border: vars.color.info[600],
+        solid: vars.color.info[700],
       },
       published: {
         bg: vars.color.success[50],
         text: vars.color.success[800],
         border: vars.color.success[600],
+        solid: vars.color.success[700],
       },
       rejected: {
         bg: vars.color.danger[50],
         text: vars.color.danger[800],
         border: vars.color.danger[600],
+        solid: vars.color.danger[700],
       },
       /**
        * Brifingden sapma: `paused` info yerine nötr, `expired` nötr yerine
@@ -231,17 +257,29 @@ createGlobalTheme(':root', vars, {
         bg: vars.color.neutral[200],
         text: vars.color.neutral[800],
         border: vars.color.neutral[600],
+        solid: vars.color.neutral[600],
       },
+      /**
+       * `expired`'ın solid'i 800: `pending` 700'ü aldığı için ikisi aynı
+       * turuncuda buluşmasın. Soft'ta zaten 100/900 ile ayrışıyorlar.
+       */
       expired: {
         bg: vars.color.warning[100],
         text: vars.color.warning[900],
         border: vars.color.warning[700],
+        solid: vars.color.warning[800],
       },
-      /** Arşiv en koyu gri: üç gri durum taslak → pasif → arşiv diye kademelenir. */
+      /**
+       * Arşiv en koyu gri: üç gri durum taslak → pasif → arşiv diye kademelenir.
+       * Kademe `solid`'de de korunur (500 → 600 → 700); `border` ikisinde de
+       * 600 kaldığı için solid zemini oradan okumak taslağı değil **pasifi**
+       * arşivle aynı gösteriyordu.
+       */
       archived: {
         bg: vars.color.neutral[300],
         text: vars.color.neutral[900],
         border: vars.color.neutral[600],
+        solid: vars.color.neutral[700],
       },
     },
   },
