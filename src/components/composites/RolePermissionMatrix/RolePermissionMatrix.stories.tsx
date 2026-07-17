@@ -98,7 +98,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'Brifing 1.4 yetki tablosunun ekrandaki hâli. **Satır izin, sütun rol**: 32 izin ' +
+          'Brifing 1.4 yetki tablosunun ekrandaki hâli. **Satır izin, sütun rol**: 33 izin ' +
           'dört sütuna sığar, tersi (32 sütun) hiçbir ekrana sığmaz ve bu yön şartnamenin kendi ' +
           'tablosuyla birebir kaldığı için ekran satır satır karşılaştırılabilir. Her kutunun ' +
           'erişilebilir adı **"rol + izin"** — 128 kutunun hepsi "Seç" deseydi ekran okuyucu ' +
@@ -286,7 +286,7 @@ export const CellsAreNamedByRoleAndPermission: Story = {
     })
     await expect(destekOnayla).not.toBeChecked()
 
-    /* Dört rol × 32 izin: hücre sayısı eksiksiz. */
+    /* Dört rol × 33 izin: hücre sayısı eksiksiz. */
     await expect(canvas.getAllByRole('checkbox')).toHaveLength(
       TUM_ROLLER.length * TUM_IZINLER.length,
     )
