@@ -12,6 +12,7 @@ import {
 } from '../../../fixtures'
 import { Button } from '../../primitives/Button'
 import { SellerPanel } from './SellerPanel'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const VARYANTLAR = ['summary', 'detailed', 'risk'] as const
 
@@ -225,6 +226,7 @@ export const LongContent: Story = {
  * moderatör "Askıya Alındı" ile "Banlandı"yı ayırt edebilmeli.
  */
 export const StatusIsNotOnlyColor: Story = {
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       {Object.values(userByStatus).map((user) => (
@@ -291,6 +293,7 @@ export const RiskShowsSignalsNotAVerdict: Story = {
  * çıkmamalı.
  */
 export const SanctionIsSurfacedOnRisk: Story = {
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       <SellerPanel {...args} user={suspendedIndividual} variant="risk" />
@@ -384,6 +387,7 @@ export const SummaryWithholdsContactAndCounts: Story = {
  * ilanın yanında yanan "Doğrulanmış" asıl sinyali ("Doğrulanmamış") bastırır.
  */
 export const SummaryVerificationBadgeIsSelective: Story = {
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       <SellerPanel {...args} user={activeIndividualOwner} variant="summary" />
@@ -402,6 +406,7 @@ export const SummaryVerificationBadgeIsSelective: Story = {
 
 /** `detailed`/`risk` iki hâli de yazar: rozetin yokluğu belirsiz kalmamalı. */
 export const DetailedShowsBothVerificationStates: Story = {
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       <SellerPanel {...args} user={activeIndividualOwner} variant="detailed" />
@@ -458,6 +463,7 @@ export const Mobile: Story = {
 }
 
 export const VariantsComparison: Story = {
+  parameters: cokluKopyaLandmarkMuafiyeti,
   args: { user: verifiedRealEstateOffice, listingCount: 6, openReportCount: 3 },
   render: (args) => (
     <div style={{ display: 'grid', gap: '2rem' }}>

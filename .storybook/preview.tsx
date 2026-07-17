@@ -86,10 +86,14 @@ const preview: Preview = {
       // 'error' - CI'ı a11y ihlalinde kırar
       // 'off'   - a11y kontrolünü tamamen kapatır
       //
-      // Ekip Storybook'a alıştıktan ve mevcut ihlaller temizlendikten sonra
-      // 'error'a çekilecek. Brifing "axe raporunda kritik ihlal bulunmamalıdır"
-      // diyor; o kapıya Faz 1 sonunda geçeceğiz.
-      test: 'todo',
+      // Faz 2 kapanışında 'error'a çekildi (brifing: "axe raporunda kritik ihlal
+      // bulunmamalıdır"). Kapatılan 26 ihlalin dökümü ve hangisinin component
+      // kusuru, hangisinin canvas artefaktı olduğu AGENTS.md'de.
+      //
+      // Story bazında muafiyet gereken tek durum "aynı landmark tek canvas'ta N
+      // kez" — sebebi ve sınırları `src/storybook/a11y.ts`'te. Yeni bir story
+      // burayı 'todo'ya çekmek zorunda kalıyorsa ihlal büyük ihtimalle gerçektir.
+      test: 'error',
     },
 
     /** Kendi metadata standardımız — AI ajanlarına projenin kimliğini bildirir. */

@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, within } from 'storybook/test'
 import type { AccordionItem } from '../../../types/component-props'
 import { Accordion } from './Accordion'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const OZNITELIK_GRUPLARI: AccordionItem[] = [
   {
@@ -140,6 +141,12 @@ export const TogglesOnClick: Story = {
 }
 
 export const VariantsComparison: Story = {
+  /*
+    Base UI'ın Accordion paneli `role="region"` + tetikleyicisinden ad alıyor;
+    aynı başlıkları taşıyan iki akordeon yan yana konunca iki özdeş adlı bölge
+    oluyor. Tek akordeonda (uygulamadaki hâli) böyle bir şey yok.
+  */
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '2rem' }}>
       <Accordion {...args} variant="separated" items={OZNITELIK_GRUPLARI.slice(0, 2)} />

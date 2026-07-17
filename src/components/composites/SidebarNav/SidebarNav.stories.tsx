@@ -20,6 +20,7 @@ import { AdminPermission, AdminRole, ROLE_PERMISSIONS } from '../../../types/dom
 import { ADMIN_ROLE_LABEL } from '../../../domain/labels'
 import type { NavigationItem } from '../../../types/component-props'
 import { SidebarNav } from './SidebarNav'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 /** Panelin on bir ekranından türetilmiş menü; iki kademeli iki grup içeriyor. */
 const MENU: NavigationItem[] = [
@@ -712,6 +713,15 @@ export const UnknownActiveItemMarksNothing: Story = {
 export const VariantsComparison: Story = {
   args: { activeItemId: 'listings-queue' },
   parameters: {
+    /*
+      İki ray = "Ana menü" adlı iki `<nav>`. Uygulamada bir tane olur; ad
+      component'te sabit yazılı olduğu için kopyalara ayrı ad verilemiyor.
+      (Rayın ve çekmecenin ikisi birden "Ana menü" demesi ihlal değil: çekmece
+      açıkken Base UI sayfanın kalanını `aria-hidden` yapıyor, kapalıyken de
+      portal içeriği hiç render edilmiyor — ikisi aynı anda erişilebilirlik
+      ağacında olmuyor. `MobileDrawer` story'si bunu geçerek doğruluyor.)
+    */
+    ...cokluKopyaLandmarkMuafiyeti,
     docs: {
       description: {
         story:

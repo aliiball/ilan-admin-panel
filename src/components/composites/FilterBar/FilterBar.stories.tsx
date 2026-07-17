@@ -6,6 +6,7 @@ import { ListingCategory, ListingStatus } from '../../../types/domain'
 import { LISTING_CATEGORY_LABEL, LISTING_STATUS_LABEL } from '../../../domain/labels'
 import { allListingFixtures } from '../../../fixtures'
 import { FilterBar } from './FilterBar'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const secenekler = <T extends string>(degerler: T[], etiket: Record<T, string>): SelectOption[] =>
   degerler.map((deger) => ({ value: deger, label: etiket[deger] }))
@@ -314,6 +315,8 @@ export const Interactive: Story = {
 }
 
 export const VariantsComparison: Story = {
+  /* Her varyant kendi `<section>`'ını açıyor; uygulamada sayfada bir tane olur. */
+  parameters: cokluKopyaLandmarkMuafiyeti,
   args: { values: AKTIF_DEGERLER },
   render: (args) => (
     <div style={{ display: 'grid', gap: '2rem' }}>

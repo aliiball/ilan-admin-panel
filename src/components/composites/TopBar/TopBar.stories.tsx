@@ -5,6 +5,7 @@ import { AdminRole } from '../../../types/domain'
 import { ADMIN_ROLE_LABEL } from '../../../domain/labels'
 import { moderatorUser, userByRole, verifiedRealEstateOffice } from '../../../fixtures'
 import { TopBar } from './TopBar'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const BASLIK = 'İlan Moderasyonu'
 
@@ -290,6 +291,8 @@ export const TitleIsNotAHeading: Story = {
 
 /** Dört admin rolü: rol satırı `domain/labels.ts`’ten gelir, çubuğa gömülmez. */
 export const EveryAdminRole: Story = {
+  /* Dört rol = dört TopBar = dört banner. Uygulamada bir tane olur. */
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '1.5rem' }}>
       {ROL_SIRASI.map((rol) => (
@@ -353,6 +356,8 @@ export const MobileMenuOpensDrawer: Story = {
  * genişliğine bağlı, kabın genişliğine değil — onu `Mobile` story’si gösterir.
  */
 export const VariantsComparison: Story = {
+  /* Her TopBar bir `<header>` = bir banner. Uygulamada bir tane olur. */
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '2rem' }}>
       <div style={{ display: 'grid', gap: '0.5rem' }}>

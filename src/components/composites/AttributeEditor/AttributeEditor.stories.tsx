@@ -10,6 +10,7 @@ import {
   type CategoryAttributeDefinition,
 } from '../../../types/domain'
 import { AttributeEditor } from './AttributeEditor'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const MODLAR = ['create', 'edit', 'readOnly'] as const
 
@@ -710,6 +711,12 @@ export const TogglingFlagSendsMergedValue: Story = {
 }
 
 export const VariantsComparison: Story = {
+  /*
+    Editörün `<header>`'ı Storybook'ta banner sayılıyor (uygulamada AppShell'in
+    `<main>`'i içinde kalır ve landmark üretmez — bilinen tuzak), üç mod yan yana
+    konunca üç banner oluyor.
+  */
+  parameters: cokluKopyaLandmarkMuafiyeti,
   args: { value: ISITMA_TIPI },
   render: (args) => (
     <div style={{ display: 'grid', gap: '2.5rem' }}>

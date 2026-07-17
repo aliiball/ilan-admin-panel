@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, within } from 'storybook/test'
 import { Pagination } from './Pagination'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const BOYUTLAR = [10, 20, 50, 100]
 
@@ -208,6 +209,8 @@ export const Interactive: Story = {
 }
 
 export const VariantsComparison: Story = {
+  /* Üç varyant = "Sayfalama" adlı üç `<nav>`. Uygulamada bir tane olur. */
+  parameters: cokluKopyaLandmarkMuafiyeti,
   render: (args) => (
     <div style={{ display: 'grid', gap: '2rem' }}>
       {(['numbered', 'compact', 'loadMore'] as const).map((variant) => (

@@ -7,6 +7,7 @@ import { formatDateTime } from '../../../utils/formatDateTime'
 import { Button } from '../../primitives/Button'
 import { StatusBadge } from '../StatusBadge'
 import { PageHeader } from './PageHeader'
+import { cokluKopyaLandmarkMuafiyeti } from '../../../storybook/a11y'
 
 const ilan = residentialPendingVilla
 
@@ -481,7 +482,12 @@ export const ActionTabOrderEndsWithPrimary: Story = {
  * kaçınılmaz ve gerçek kullanımı temsil etmez — ekranda tek başlık vardır.
  */
 export const VariantsComparison: Story = {
-  parameters: { layout: 'fullscreen' },
+  /*
+    Her PageHeader bir `<header>` açıyor ve Storybook'ta banner sayılıyor
+    (uygulamada AppShell'in `<main>`'i içinde kalır — bilinen tuzak).
+    Kırıntı yolunun `<nav aria-label="Sayfa yolu">`'su da kopyalanıyor.
+  */
+  parameters: { ...cokluKopyaLandmarkMuafiyeti, layout: 'fullscreen' },
   render: (args) => (
     <div style={{ display: 'grid', gap: '2.5rem', padding: '1rem' }}>
       <div style={{ display: 'grid', gap: '0.5rem' }}>
