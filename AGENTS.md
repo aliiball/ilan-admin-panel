@@ -275,6 +275,23 @@ component'te sabit yazılı olduğu için story kopyalara ayrı ad da veremiyor.
 Muafiyetin tanımı ve sınırları **tek yerde**: `src/storybook/a11y.ts` →
 `cokluKopyaLandmarkMuafiyeti`.
 
+**Kapı 'error' olunca play, DOM'u OTURMUŞ bırakmalı.** Kapının kendisinin ürettiği
+tek yeni tuzak bu ve ölçüldü: Base UI popup açıkken odak tuzağı için
+`aria-hidden="true"` + `tabindex="0"` taşıyan koruma span'leri
+(`data-base-ui-focus-guard`) basıyor. Kasıtlılar ve popup'ın ömrüyle sınırlılar,
+ama axe için `aria-hidden-focus` ihlali. Play bittiğinde axe çalışıyor; popup'ın
+**kapanma animasyonu** o an sürüyorsa korumalar DOM'da duruyor ve story
+**yazı-tura** düşüyor — `Select`'in iki story'si beş koşuda üç kez düştü, aynı
+kod. `'todo'` iken görünmüyordu çünkü ihlal raporlanıp geçiliyordu; kapıyı
+çekmek gizli yarışı görünür hâle getirdi.
+
+Çözüm muafiyet değil, **kapanışı beklemek** (`Select.stories.tsx` →
+`popupKapanmasiniBekle`): ihlal ne gerçek bir kusur ne de artefakt — testin
+kendi bıraktığı artık. Portal açıp kapatan (Select, MultiSelect, Modal, Drawer,
+Popover, Tooltip) her yeni story bu tuzağa girebilir; bir `waitFor` bedeli.
+Dikkat: **açık bırakılan** popup sorun değil (ölçüldü — açık dialog'la biten
+story geçiyor); sorun tam olarak _kapanırken_ bitirmek.
+
 **Muafiyet gerçek gerekliliği kapatmıyor — kapatmamalı.** Faz 3'ün ekranlarında
 aynı sayfada gerçekten birden çok gezinme landmark'ı olacak (SidebarNav'ın "Ana
 menü"sü + PageHeader'ın "Sayfa yolu" kırıntısı) ve adlarının benzersizliği orada
@@ -591,8 +608,16 @@ görme" izni. **Uydurma, sor.**
   gerekçe ve not istiyor, dolayısıyla buton doğrudan handler'ı çağıramaz: dialog
   açar, `RejectionReasonPicker` ile toplar. Onay/arşivde alan yok ama dialog
   yine açılır (brifing 2.4: karar öncesi doğrulama zorunlu). Dialog onayla
-  kapanır — sözleşmede hata kanalı yok, sonucu sayfanın toast'ı bildirir; taslak
-  state'te kalır ki başarısız kararda not kaybolmasın.
+  kapanır; taslak state'te kalır ki başarısız kararda not kaybolmasın —
+  `DraftSurvivesRevisionConflict` bunu artık **ölçüyor** (sözleşmenin bu sözü
+  Faz 2 boyunca ölçülmeden duruyordu).
+  Kapanışta `decisionError` kanalı eklendi ve **çubuk onu render ediyor**:
+  reddedilen kararı `danger` bir `Alert` ile bildiriyor. Çakışmada uyarının
+  tekrar deneme butonu **yok** — aynı damga aynı çakışmayı üretir, damgayı
+  yenilemek görülmemiş içeriği onaylamak olur; doğru eylem yeniden yükleyip
+  yeniden bakmak, o da sayfanın işi. Prop'u eklerken JSDoc'una "sebebi gösterir"
+  diye yazıp component'i bağlamamak, tam da bu turda düzeltilen
+  "gerçekleştirilemez JSDoc" hatasının kendisi olurdu.
 
 ### Faz 2'nin son turunda kurulan yapılar
 
