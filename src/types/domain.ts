@@ -637,7 +637,43 @@ export enum AdminPermission {
   PromotionManage = 'promotion:manage',
 
   UserView = 'user:view',
+  /**
+   * Kullanıcı bilgisinin **tam** düzenlenmesi — hesap durumu ve doğrulama dahil
+   * her alan.
+   *
+   * Brifing 1.4 matrisi "Kullanıcı bilgisi düzenleme" satırında yalnız
+   * `superAdmin`'e "Tam" veriyor; `moderator` "Sınırlı", `destek` "Sınırlı
+   * destek alanları". Bu yüzden bu izin **yalnız `superAdmin`'dedir**; diğer iki
+   * rol `UserEditProfile` / `UserEditContact` ile daraltılmış kümeyi alır.
+   */
   UserEdit = 'user:edit',
+  /**
+   * Kullanıcı profil bilgisi düzenleme — ad, e-posta, telefon, avatar, firma adı.
+   *
+   * Brifing 1.4 matrisinin "Kullanıcı bilgisi düzenleme" satırında `moderator`
+   * için yazan **"Sınırlı"** hücresi. Matris hangi alanların sınırlı olduğunu
+   * söylemiyordu; kapsam kullanıcıya soruldu ve onaylandı.
+   *
+   * Kapsam dışı: hesap durumu (`UserSuspend`/`UserBan`'in işi), admin rolü
+   * (`UserAssignRole`) ve doğrulama bayrağı — bunlar `UserEdit`'te kalır.
+   */
+  UserEditProfile = 'user:editProfile',
+  /**
+   * Kullanıcı iletişim bilgisi düzenleme — **yalnız** e-posta ve telefon.
+   *
+   * Brifing 1.4 matrisinin "Kullanıcı bilgisi düzenleme" satırında `destek` için
+   * yazan **"Sınırlı destek alanları"** hücresi; brifing 2.6 aynı eylemi
+   * "İletişim veya doğrulama alanlarını düzenleme" diye anıyor. Alan kümesi
+   * kullanıcıya soruldu ve onaylandı: destek yanlış yazılmış bir telefonu
+   * düzeltebilmeli, ama kimliği (ad, firma) değiştirememeli.
+   *
+   * `UserEditProfile`'ın alt kümesidir. **Kademeler dışlayıcı değil, kapsayıcı:**
+   * `superAdmin` `ALL_ADMIN_PERMISSIONS` ile üç izne birden sahiptir. Dolayısıyla
+   * "bu kullanıcı sınırlı mı?" sorusu `includes(UserEditContact)` ile
+   * cevaplanamaz — önce `UserEdit`, sonra `UserEditProfile`, en sonda bu
+   * sınanmalı, yoksa `superAdmin`'e daraltılmış form gösterilir.
+   */
+  UserEditContact = 'user:editContact',
   UserSuspend = 'user:suspend',
   UserBan = 'user:ban',
   UserAssignRole = 'user:assignRole',
@@ -646,7 +682,31 @@ export enum AdminPermission {
   CategoryManage = 'category:manage',
 
   ReportView = 'report:view',
+  /**
+   * Şikayet triage'ı — **tam**: sınıflandırma, şiddet seviyesi (`severity`)
+   * değiştirme ve admin atama (`assignedAdminId`).
+   *
+   * Brifing 1.4 matrisi bu satırda `moderator` ve `destek`'e "Tam" veriyor;
+   * `icerikDenetcisi` "Sınırlı" olduğu için onda `ReportTriageLimited` var.
+   */
   ReportTriage = 'report:triage',
+  /**
+   * Şikayet triage'ı — **sınırlı**: okur, sınıflandırır, moderatöre eskale eder.
+   *
+   * Brifing 1.4 matrisinin "Şikayet triage etme" satırında `icerikDenetcisi`
+   * için yazan **"Sınırlı"** hücresi. Matris kapsamı tanımlamıyordu; kullanıcıya
+   * soruldu ve onaylandı.
+   *
+   * Kapsam dışı: `severity` ve `assignedAdminId` değiştirme. Gerekçe brifing
+   * 1.4'ün rol tanımıyla örtüşüyor: içerik denetçisi ilan kararı verir, iş
+   * dağıtımı ve önceliklendirme yapmaz — şiddet seviyesini yükseltmek kuyruğun
+   * sırasını değiştirmektir.
+   *
+   * `ReportTriage`'ın alt kümesidir ve kademeler dışlayıcı değildir:
+   * `superAdmin` ikisine birden sahiptir. Kapıyı `ReportTriage`'a bakarak aç,
+   * bu izne düşmeden önce — bkz. `UserEditContact`.
+   */
+  ReportTriageLimited = 'report:triageLimited',
   ReportResolve = 'report:resolve',
 
   SettingsView = 'settings:view',
@@ -683,6 +743,8 @@ export const ALL_ADMIN_PERMISSIONS = [
   AdminPermission.PromotionManage,
   AdminPermission.UserView,
   AdminPermission.UserEdit,
+  AdminPermission.UserEditProfile,
+  AdminPermission.UserEditContact,
   AdminPermission.UserSuspend,
   AdminPermission.UserBan,
   AdminPermission.UserAssignRole,
@@ -690,6 +752,7 @@ export const ALL_ADMIN_PERMISSIONS = [
   AdminPermission.CategoryManage,
   AdminPermission.ReportView,
   AdminPermission.ReportTriage,
+  AdminPermission.ReportTriageLimited,
   AdminPermission.ReportResolve,
   AdminPermission.SettingsView,
   AdminPermission.PermissionManage,
@@ -698,6 +761,18 @@ export const ALL_ADMIN_PERMISSIONS = [
   AdminPermission.AuditView,
 ] as const satisfies readonly AdminPermission[]
 
+/**
+ * Rol → izin eşlemesi; brifing 1.4 yetki matrisinin birebir karşılığı.
+ *
+ * Matrisin üç "Sınırlı" hücresi enum'da karşılıksızdı ve bu tablo onları **"Tam"
+ * okumuştu**: `moderator` ile `destek` `UserEdit`'e, `icerikDenetcisi`
+ * `ReportTriage`'a sahip görünüyordu — yani matris sınırlarken kod tam yetki
+ * veriyordu. Üçü de daraltılmış izinlerle (`UserEditProfile`, `UserEditContact`,
+ * `ReportTriageLimited`) değiştirildi.
+ *
+ * Kademeler kapsayıcıdır: `superAdmin` hem tam hem sınırlı izne sahiptir. Yetki
+ * sınayan kod **önce tamını** sorsun (bkz. `AdminPermission.UserEditContact`).
+ */
 export const ROLE_PERMISSIONS = {
   [AdminRole.SuperAdmin]: ALL_ADMIN_PERMISSIONS,
 
@@ -717,7 +792,8 @@ export const ROLE_PERMISSIONS = {
     AdminPermission.ListingAddNote,
     AdminPermission.PromotionManage,
     AdminPermission.UserView,
-    AdminPermission.UserEdit,
+    // Matris: "Kullanıcı bilgisi düzenleme" = Sınırlı. Tam `UserEdit` değil.
+    AdminPermission.UserEditProfile,
     AdminPermission.UserSuspend,
     AdminPermission.UserBan,
     AdminPermission.CategoryView,
@@ -738,7 +814,8 @@ export const ROLE_PERMISSIONS = {
     AdminPermission.ListingAddNote,
     AdminPermission.CategoryView,
     AdminPermission.ReportView,
-    AdminPermission.ReportTriage,
+    // Matris: "Şikayet triage etme" = Sınırlı. Tam `ReportTriage` değil.
+    AdminPermission.ReportTriageLimited,
     AdminPermission.SettingsView,
     AdminPermission.ThemeManage,
   ],
@@ -747,8 +824,11 @@ export const ROLE_PERMISSIONS = {
     AdminPermission.DashboardView,
     AdminPermission.ListingView,
     AdminPermission.ListingAddNote,
+    // Matris: "Kullanıcı görüntüleme" = Sınırlı. Kapsam sorulmadı, karar
+    // verilmedi; şimdilik tam `UserView` duruyor — açık borç.
     AdminPermission.UserView,
-    AdminPermission.UserEdit,
+    // Matris: "Kullanıcı bilgisi düzenleme" = Sınırlı destek alanları.
+    AdminPermission.UserEditContact,
     AdminPermission.ReportView,
     AdminPermission.ReportTriage,
     AdminPermission.SettingsView,
