@@ -1,7 +1,17 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, within } from 'storybook/test'
-import { AdminPermission, AdminRole, ListingStatus, ROLE_PERMISSIONS } from '../../../types/domain'
-import { ADMIN_ROLE_LABEL, LISTING_STATUS_LABEL } from '../../../domain/labels'
+import {
+  AdminPermission,
+  AdminRole,
+  ListingStatus,
+  RejectionReason,
+  ROLE_PERMISSIONS,
+} from '../../../types/domain'
+import {
+  ADMIN_ROLE_LABEL,
+  LISTING_STATUS_LABEL,
+  REJECTION_REASON_LABEL,
+} from '../../../domain/labels'
 import type { ModerationCapabilities } from '../../../types/component-props'
 import { ModerationActionBar } from './ModerationActionBar'
 
@@ -89,6 +99,115 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
+
+/**
+ * Revizyon çakışması: karar verilirken ilan değişti.
+ *
+ * Çubuk çakışmayı **tespit etmiyor**, `expectedRevision` damgasıyla tespit
+ * _edilebilir_ kılıyor; cevabı sunucu veriyor ve `decisionError` ile geri
+ * geliyor. Uyarının **tekrar deneme butonu yok ve olmamalı**: aynı damga aynı
+ * çakışmayı üretir, damgayı yenilemek ise görülmemiş bir içeriği onaylamak
+ * olur. Doğru eylem ilanı yeniden yüklemek — o da sayfanın işi.
+ *
+ * `decisionError` meta.args'ta **yok**: yokluğu bir durum (karar gönderilmemiş
+ * ya da başarılı) ve meta'ya konan prop bu dosyada geri alınamaz olurdu
+ * (AGENTS.md, TS2375).
+ */
+export const RevisionConflictIsSurfaced: Story = {
+  args: {
+    revision: 3,
+    decisionError: { kind: 'revisionConflict', expectedRevision: 3, currentRevision: 5 },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    const uyari = canvas.getByRole('alert')
+    await expect(uyari).toHaveTextContent(/İlan siz incelerken değişti/)
+
+    /*
+      İki revizyon da yazılmalı: "ilan değişti" tek başına moderatöre neyi
+      kaçırdığını söylemez, "3 -> 5" iki düzenleme geçtiğini söyler.
+    */
+    await expect(uyari).toHaveTextContent(/3\. revizyona verdiniz/)
+    await expect(uyari).toHaveTextContent(/5\. revizyonda/)
+
+    /* Çakışmada tekrar denemek çözüm değil — buton sunulmamalı. */
+    await expect(canvas.queryByRole('button', { name: /Tekrar dene/ })).not.toBeInTheDocument()
+
+    /* Kararlar duruyor: çakışma eylemleri kaldırmaz, yeniden bakmayı gerektirir. */
+    await expect(canvas.getByRole('button', { name: 'Onayla' })).toBeInTheDocument()
+  },
+}
+
+/** Çakışma değil, uygulanamayan karar: içerik hâlâ moderatörün gördüğü içerik. */
+export const FailedDecisionIsSurfaced: Story = {
+  args: {
+    decisionError: {
+      kind: 'failed',
+      error: {
+        title: 'Karar uygulanamadı',
+        message: 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edip kararı tekrar verin.',
+        retryable: true,
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Karar uygulanamadı')
+    /* `failed`'de revizyon numarası yok: sorun içerik değil, iletim. */
+    await expect(canvas.getByRole('alert')).not.toHaveTextContent(/revizyon/)
+  },
+}
+
+/** Hata yokken uyarı da yok — sessiz çubuk varsayılan hâl. */
+export const NoDecisionErrorNoAlert: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Çakışmadan sonra taslak **kaybolmaz**: moderatörün yazdığı not yerinde durur.
+ *
+ * Sözleşmenin bu sözü ölçülmeden duruyordu. Dialog karar gönderilince kapanıyor
+ * ama gerekçe ve not state'te kalıyor; çakışma haberi geldiğinde kullanıcı
+ * dialog'u tekrar açtığında baştan yazmak zorunda değil — uzun bir red
+ * gerekçesini ikinci kez yazdırmak, çakışmanın bedelini moderatöre ödetirdi.
+ */
+export const DraftSurvivesRevisionConflict: Story = {
+  args: { revision: 3 },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+    /*
+      Gerekçe adı sözlükten okunuyor, elle yazılmıyor: "Yanıltıcı Bilgi" diye
+      yazmak etiketin gerçek hâliyle ("Yanıltıcı veya Eksik Bilgi")
+      eşleşmiyordu. Sözlükten okuyunca etiket değişse de test doğru sebeple
+      geçer.
+    */
+    const gerekceAdi = REJECTION_REASON_LABEL[RejectionReason.MisleadingOrIncompleteInfo]
+    const NOT = 'Metrekare ilan başlığıyla çelişiyor.'
+
+    await step('Red gerekçesi ve notu yazılır, karar gönderilir', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Reddet' }))
+
+      /* Dialog portalda: canvas'ta değil, gövdede aranmalı. */
+      const dialog = within(document.body)
+      await userEvent.click(await dialog.findByRole('checkbox', { name: gerekceAdi }))
+      await userEvent.type(dialog.getByRole('textbox', { name: /Moderasyon notu/ }), NOT)
+      await userEvent.click(dialog.getByRole('button', { name: 'Reddet' }))
+    })
+
+    await step('Dialog tekrar açılır: gerekçe ve not yerinde', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Reddet' }))
+
+      const dialog = within(document.body)
+      await expect(await dialog.findByRole('checkbox', { name: gerekceAdi })).toBeChecked()
+      await expect(dialog.getByRole('textbox', { name: /Moderasyon notu/ })).toHaveValue(NOT)
+    })
+  },
+}
 
 /** Ekranın altına yapışır; mobilde safe-area boşluğunu bırakır. */
 export const StickyBottom: Story = {

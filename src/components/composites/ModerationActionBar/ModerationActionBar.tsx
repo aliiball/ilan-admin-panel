@@ -7,6 +7,7 @@ import {
   isModerationDecisionComplete,
   type ModerationAction,
 } from '../../../domain/moderationActions'
+import { Alert } from '../../primitives/Alert'
 import { Button } from '../../primitives/Button'
 import { Modal } from '../../primitives/Modal'
 import { Textarea } from '../../primitives/Textarea'
@@ -104,6 +105,34 @@ const SIRA: readonly ModerationAction[] = [
 ]
 
 /**
+ * Reddedilen kararın kullanıcıya okunacak hâli.
+ *
+ * Metin burada, `domain/labels.ts`'te değil: labels bir **enum değerini**
+ * etiketler (aynı durum listede, kuyrukta ve detayda görünür), bu ise bu
+ * çubuğa özgü bir cümle — `EYLEM_SUNUMU`'nun dialog metinleriyle aynı sınıf.
+ *
+ * Çakışmada revizyon numaraları yazılıyor: "ilan değişti" tek başına
+ * moderatöre neyi kaçırdığını söylemiyor, "gördüğünüz 3, güncel 5" ise iki
+ * düzenleme geçtiğini söylüyor.
+ */
+function kararHatasiSunumu(hata: NonNullable<ModerationActionBarProps['decisionError']>): {
+  title: string
+  description: string
+} {
+  if (hata.kind === 'revisionConflict') {
+    return {
+      title: 'İlan siz incelerken değişti, kararınız uygulanmadı',
+      description:
+        `Kararı ${hata.expectedRevision}. revizyona verdiniz; ilan şu an ` +
+        `${hata.currentRevision}. revizyonda. Notunuz duruyor. İlanı yeniden ` +
+        'yükleyip değişikliklere baktıktan sonra kararınızı tekrar verin.',
+    }
+  }
+
+  return { title: hata.error.title, description: hata.error.message }
+}
+
+/**
  * İlan üzerindeki moderasyon kararları ve kararın toplandığı akış.
  *
  * **Bir eylem iki kapıdan geçmeden görünmez:** kullanıcının yetkisi olacak
@@ -122,17 +151,18 @@ const SIRA: readonly ModerationAction[] = [
  * doğrulamayı zorunlu tutuyor ve tek tıkla yayına alınan ilan geri
  * döndürülemez.
  *
- * **Dialog onayla birlikte kapanır.** Sözleşmede hata kanalı yok; istek
- * başarısız olursa çubuğun dialog içinde gösterebileceği bir şey de yok —
- * sonucu sayfanın toast'ı bildirir. Taslak (gerekçe + not) state'te kalır:
- * karar reddedilirse (örneğin revizyon çakışması) kullanıcı dialog'u tekrar
+ * **Dialog onayla birlikte kapanır, sonucu `decisionError` bildirir.** Taslak
+ * (gerekçe + not) state'te kalır: karar reddedilirse kullanıcı dialog'u tekrar
  * açtığında yazdığı not yerinde durur, baştan yazmaz. Taslak yalnız `listingId`
- * değişince temizlenir — bir sonraki ilana geçen moderatör önceki ilanın
- * notunu miras almamalı.
+ * değişince temizlenir — bir sonraki ilana geçen moderatör önceki ilanın notunu
+ * miras almamalı.
  *
- * Çubuk revizyon **çakışmasını görmez**, görünür kılar: kararı moderatörün
- * gördüğü `revision` ile damgalar (`expectedRevision`), çakışmayı sunucu tespit
- * eder, sonucu sayfa gösterir.
+ * **Çubuk revizyon çakışmasını görmez, görünür kılar:** kararı moderatörün
+ * gördüğü `revision` ile damgalar (`expectedRevision`), çakışmayı **sunucu**
+ * tespit eder ve cevabı `decisionError` ile geri gelir. Çakışmada çubuk tekrar
+ * denemeyi **önermez**: aynı damga aynı çakışmayı üretir, damgayı yenilemek ise
+ * görülmemiş bir içeriği onaylamak olur — doğru eylem ilanı yeniden yükleyip
+ * yeniden bakmak ve o sayfanın işi. Bu yüzden uyarının kendi butonu yok.
  *
  * @example
  * <ModerationActionBar
@@ -152,6 +182,7 @@ export function ModerationActionBar({
   capabilities,
   variant = 'inline',
   submittingAction,
+  decisionError,
   onApprove,
   onReject,
   onRequestChanges,
@@ -216,8 +247,28 @@ export function ModerationActionBar({
     void handlers[acikEylem]?.(payload)
   }
 
+  const hataSunumu = decisionError !== undefined ? kararHatasiSunumu(decisionError) : null
+
   return (
     <>
+      {/*
+        Uyarı çubuğun ÜSTÜNDE ve butonların dışında: `sideRail`/`stickyBottom`
+        varyantlarında kök bir flex sırası ve içine metin koymak butonları
+        ezerdi. `danger` + `role="alert"`: karar uygulanmadı, moderatör bunu
+        sekmeyle oraya varana kadar öğrenmemeli — uygulandığını sanıp bir
+        sonraki ilana geçmek en pahalı hata.
+
+        Kapatılabilir değil: sorun kalıcı, kapatmak onu çözmez.
+      */}
+      {hataSunumu !== null ? (
+        <Alert
+          tone="danger"
+          variant="soft"
+          title={hataSunumu.title}
+          description={hataSunumu.description}
+        />
+      ) : null}
+
       <div className={css.root({ variant })}>
         {gorunurEylemler.map((action) => (
           <Button
