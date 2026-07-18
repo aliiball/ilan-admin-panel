@@ -432,8 +432,44 @@ export const permanentBanSanction: UserSanction = createSanction({
   createdAt: '2026-06-26T11:00:00+03:00',
 })
 
-/** İki yaptırımın tamamı, tarihe göre sıralı. */
+/**
+ * Mert Yıldız'ın **kaldırılmış** eski askısı — `revokedAt` dolu.
+ *
+ * Faz 3 sonrası (b) turunda eklendi: `SellerPanel.sanctions`'ın merkezî sözü
+ * ("kaldırılmış yaptırım da sicildir") gerçek bir fixture'la ölçülemiyordu —
+ * `revokedAt` dolu hiçbir kayıt yoktu (RAPOR EDİLMİŞTİ).
+ *
+ * Aktif askısından (`activeSuspensionSanction`, 2026-07-15) **önce**: 2026-05
+ * başında 7 gün askıya alınmış, 3 gün sonra itiraz üzerine kaldırılmış. Mert'in
+ * sicili artık iki kayıt taşıyor — biri kaldırılmış, biri yürürlükte; bir kez
+ * affedilmiş hesap ile temiz hesabın farkı `risk` varyantında görünür.
+ */
+export const revokedSuspensionMertYildiz: UserSanction = createSanction({
+  id: 'sanction-suspension-revoked-mert-yildiz',
+  userId: 'user-suspended-mert-yildiz',
+  type: 'suspension',
+  reason: 'İlan açıklamasında yanıltıcı metrekare; itiraz üzerine kaldırıldı.',
+  startsAt: '2026-05-04T09:00:00+03:00',
+  endsAt: '2026-05-11T09:00:00+03:00',
+  createdByAdminId: 'admin-moderator-1',
+  createdAt: '2026-05-04T09:00:00+03:00',
+  revokedAt: '2026-05-07T14:20:00+03:00',
+})
+
+/**
+ * Mert Yıldız'ın **hesap başına** yaptırım sicili (yürürlükteki + kaldırılmış),
+ * en yeni başta. `SellerPanel.sanctions` ve `UserDetailData.sanctions`'a
+ * doğrudan verilebilir — `allUserSanctionFixtures` bunun yerini tutmaz, o iki
+ * ayrı hesabın kataloğudur (RAPOR EDİLMİŞTİ).
+ */
+export const mertYildizSanctions: UserSanction[] = [
+  activeSuspensionSanction,
+  revokedSuspensionMertYildiz,
+]
+
+/** Üç yaptırımın tamamı (katalog; kullanıcı başına değil). */
 export const allUserSanctionFixtures: UserSanction[] = [
   permanentBanSanction,
   activeSuspensionSanction,
+  revokedSuspensionMertYildiz,
 ]

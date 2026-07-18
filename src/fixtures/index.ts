@@ -32,9 +32,11 @@ export {
   allUserSanctionFixtures,
   bannedIndividual,
   contentReviewerUser,
+  mertYildizSanctions,
   moderatorUser,
   pendingVerificationOffice,
   permanentBanSanction,
+  revokedSuspensionMertYildiz,
   superAdminUser,
   supportUser,
   suspendedIndividual,
@@ -62,6 +64,14 @@ export {
 } from './reports'
 
 export {
+  categoryAttributesByNodeId,
+  categoryTreeFixture,
+  emptyAttributeList,
+  emptyCategoryTreeFixture,
+  residentialAttributes,
+} from './categories'
+
+export {
   allAuditLogFixtures,
   auditByEntityType,
   auditCategoryAttributeAdded,
@@ -78,8 +88,13 @@ export {
 
 export {
   categoryDistribution,
+  dailyApprovals,
   dailyModerationCount,
   dailyNewListings,
+  dailyRejections,
   dashboardMetrics,
   emptyDashboardMetrics,
+  longestWaitingListings,
+  moderatorVolume,
+  recentModerationEvents,
 } from './dashboard'

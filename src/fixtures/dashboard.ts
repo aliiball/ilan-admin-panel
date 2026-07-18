@@ -1,10 +1,20 @@
 import {
   ListingCategory,
+  ListingStatus,
   type CategoryDistributionItem,
   type DashboardMetrics,
   type ISODate,
+  type Listing,
+  type ModerationEvent,
+  type ModeratorVolumeItem,
   type TimeSeriesPoint,
 } from '../types/domain'
+import { allModerationEventFixtures } from './moderationEvents'
+import {
+  residentialPendingVilla,
+  timesharePendingThermal,
+  tourismRejectedPension,
+} from './listings'
 
 /**
  * Dashboard metrik fixture'ı.
@@ -124,6 +134,79 @@ export const categoryDistribution: CategoryDistributionItem[] = [
   { category: ListingCategory.TourismFacility, count: 124, ratio: 0.04 },
 ]
 
+/*
+  Faz 3 sonrası (b) turunda eklenen bloklar — brifing 2.2'nin Faz 3'te kanalsız
+  kalan üç verisi + onay/red ayrımı. Hepsi opsiyonel alanlar, mevcut sayıları
+  bozmadan ekleniyor.
+*/
+
+/**
+ * Günlük onay ve red — `dailyModerationCount`'un ayrıştırılmış hâli.
+ *
+ * `red = round(moderasyon × rejectionRate)`, `onay = moderasyon − red`; yani
+ * toplamları **her gün** `dailyModerationCount`'a eşit (sözleşmenin şartı). Red
+ * oranı dashboard'ın `rejectionRate`'iyle (0,083) aynı — iki yer tek gerçeği
+ * göstersin.
+ */
+export const dailyApprovals: TimeSeriesPoint[] = GUNLUK_SERI_TABLOSU.map((gun) => ({
+  date: gun.date,
+  value: gun.moderasyon - Math.round(gun.moderasyon * 0.083),
+}))
+
+export const dailyRejections: TimeSeriesPoint[] = GUNLUK_SERI_TABLOSU.map((gun) => ({
+  date: gun.date,
+  value: Math.round(gun.moderasyon * 0.083),
+}))
+
+/**
+ * En uzun süredir onay bekleyen ilanlar (brifing 2.2). En eski gönderim başta.
+ *
+ * `pendingReview` durumundaki gerçek fixture ilanları — uydurma yok. Sıra
+ * `submittedAt`'e göre: en uzun bekleyen tepede.
+ */
+export const longestWaitingListings: Listing[] = [
+  residentialPendingVilla,
+  timesharePendingThermal,
+  tourismRejectedPension,
+].filter((l) => l.status === ListingStatus.PendingReview)
+
+/** Son moderasyon işlemleri (brifing 2.2). En yeni başta; katalogun son beşi. */
+export const recentModerationEvents: ModerationEvent[] = [...allModerationEventFixtures]
+  .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  .slice(0, 5)
+
+/**
+ * Moderatör bazında işlem hacmi (brifing 2.2: "yalnızca yetkili rollere").
+ *
+ * Toplamlar dashboard'la tutarlı: `approved` toplamı `publishedListingCount`
+ * (3.100), `rejected` toplamı `rejectedListingCount` (281). `report:resolve`
+ * olmayan içerik denetçisi (Burak) daha az karar veriyor; destek (Deniz) hiç
+ * moderasyon yapmıyor, o yüzden listede yok.
+ */
+export const moderatorVolume: ModeratorVolumeItem[] = [
+  {
+    adminId: 'admin-super-1',
+    adminName: 'Selin Aydın',
+    approvedCount: 1_240,
+    rejectedCount: 96,
+    changesRequestedCount: 180,
+  },
+  {
+    adminId: 'admin-moderator-1',
+    adminName: 'Elif Kaya',
+    approvedCount: 1_410,
+    rejectedCount: 150,
+    changesRequestedCount: 205,
+  },
+  {
+    adminId: 'admin-content-reviewer-1',
+    adminName: 'Burak Şahin',
+    approvedCount: 450,
+    rejectedCount: 35,
+    changesRequestedCount: 60,
+  },
+]
+
 /** Dashboard'un dolu hâli — brifing 5.2'nin sayıları. */
 export const dashboardMetrics: DashboardMetrics = {
   pendingReviewCount: 37,
@@ -136,6 +219,11 @@ export const dashboardMetrics: DashboardMetrics = {
   dailyNewListings,
   dailyModerationCount,
   categoryDistribution,
+  dailyApprovals,
+  dailyRejections,
+  longestWaitingListings,
+  recentModerationEvents,
+  moderatorVolume,
 }
 
 /**
