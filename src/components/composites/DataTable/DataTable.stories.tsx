@@ -267,6 +267,24 @@ export const MobileCards: Story = {
       renderMobileCard={(row) => <ListingCard listing={row} variant="grid" />}
     />
   ),
+  /*
+    `mobileMode="cards"` artık viewport'a KENDİSİ bakıyor: iki dal da DOM'da,
+    birini medya sorgusu boyuyor. Eskiden bu dal yalnız kart çiziyordu (tablo
+    hiç yoktu); tablonun `{ hidden: true }` ile bulunması düzeltmenin regresyon
+    kanıtı. Sorgular viewport'tan bağımsız — `{ hidden: true }` iddiayı "DOM'da
+    var/yok" düzeyine indirir.
+  */
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getAllByRole('article', { hidden: true })).toHaveLength(
+      allListingFixtures.length,
+    )
+    await expect(canvas.getByRole('table', { hidden: true })).toBeInTheDocument()
+    await expect(canvas.getAllByRole('row', { hidden: true })).toHaveLength(
+      allListingFixtures.length + 1,
+    )
+  },
 }
 
 export const Interactive: Story = {

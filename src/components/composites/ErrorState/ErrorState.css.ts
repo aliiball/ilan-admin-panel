@@ -68,7 +68,12 @@ export const content = style({
 
 export const title = style({
   // Bkz. EmptyState.title: `<p>`'nin varsayılan margin'i `gap`'in üstüne biner.
+  // `headingLevel` verilince aynı sınıf `<h{n}>`'ye uygulanıyor; `<h1>`/`<h2>`'nin
+  // daha büyük tarayıcı margin'ini de `margin: 0` siler, başlık `<p>` ile birebir
+  // aynı kalır.
   margin: 0,
+  // Uzun kırılmaz bir başlık `content`'in `minWidth: 0` kutusunu taşırmasın.
+  overflowWrap: 'anywhere',
   color: vars.color.text.primary,
   fontWeight: vars.font.weight.semibold,
   fontSize: vars.font.size.md,

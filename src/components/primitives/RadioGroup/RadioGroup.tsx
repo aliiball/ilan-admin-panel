@@ -1,3 +1,4 @@
+import { Field } from '@base-ui/react/field'
 import { Radio } from '@base-ui/react/radio'
 import { RadioGroup as BaseRadioGroup } from '@base-ui/react/radio-group'
 import { FieldShell } from '../../internal/FieldShell'
@@ -53,18 +54,26 @@ export function RadioGroup({
         })}
       >
         {options.map((item) => (
-          <label key={item.value} className={option} data-disabled={item.disabled || undefined}>
+          // Field.Item her seçeneği kendi labelable kapsamına alır: FieldShell'in
+          // Field.Root'u grubun etiket id'sini paylaşılan LabelableContext'e yazıyor
+          // ve o id RadioRoot'un aria-labelledby'sine sızıp üç seçeneğin de adını
+          // grubun adına eziyordu. Field.Item taze bir LabelableProvider açar (grup
+          // id'si geride kalır); içteki Field.Label seçeneğin kendi adını verir,
+          // Field.Description ise ada karışmadan aria-describedby'ye bağlanır.
+          <Field.Item key={item.value} className={option} disabled={item.disabled ?? false}>
             <Radio.Root className={radio} value={item.value} disabled={item.disabled ?? false}>
               <Radio.Indicator className={indicator} />
             </Radio.Root>
 
             <span className={text}>
-              <span className={labelClass}>{item.label}</span>
+              <Field.Label className={labelClass}>{item.label}</Field.Label>
               {item.description !== undefined ? (
-                <span className={descriptionClass}>{item.description}</span>
+                <Field.Description className={descriptionClass} render={<span />}>
+                  {item.description}
+                </Field.Description>
               ) : null}
             </span>
-          </label>
+          </Field.Item>
         ))}
       </BaseRadioGroup>
     </FieldShell>

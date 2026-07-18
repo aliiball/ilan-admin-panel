@@ -9,6 +9,12 @@ export const card = recipe({
     border: '1px solid',
     borderColor: vars.color.border.subtle,
     borderRadius: vars.radius.lg,
+    /*
+      `overflow: hidden` KALIYOR: media kenardan kenara ve kartın köşe
+      yuvarlaması onun kare köşelerini kırpmasıyla oluşuyor. Bunun yan etkisi
+      olan "dışa taşan odak halkası yutuluyor" sorunu `clickRegion`'da halkayı
+      İÇERİ alarak (negatif offset) çözülüyor — orada gerekçesi yazılı.
+    */
     overflow: 'hidden',
     transitionProperty: 'border-color, box-shadow',
     transitionDuration: vars.duration.fast,
@@ -32,14 +38,35 @@ export const card = recipe({
   },
 
   variants: {
-    /** Seçim kutusu varsa kart iki sütuna bölünür: kutu | tıklanabilir bölge. */
-    selectable: {
-      true: { gridTemplateColumns: 'auto 1fr' },
-      false: { gridTemplateColumns: '1fr' },
-    },
+    /**
+     * Kart üç sütuna kadar açılır: [seçim kutusu?] | tıklanabilir bölge | [eylemler?].
+     *
+     * Eylemler kartın kendi gridinde ayrı bir sütun: tıklanabilir bölge bir
+     * `<button>` olduğunda `actions` onun İÇİNDE olamaz (iç içe etkileşimli
+     * element geçersiz HTML + axe `nested-interactive`), bu yüzden butonun
+     * kardeşi olarak sağda duruyor. `ReportCard` ile aynı desen.
+     */
+    selectable: { true: {}, false: {} },
+    hasActions: { true: {}, false: {} },
   },
 
-  defaultVariants: { selectable: false },
+  compoundVariants: [
+    { variants: { selectable: false, hasActions: false }, style: { gridTemplateColumns: '1fr' } },
+    {
+      variants: { selectable: true, hasActions: false },
+      style: { gridTemplateColumns: 'auto 1fr' },
+    },
+    {
+      variants: { selectable: false, hasActions: true },
+      style: { gridTemplateColumns: '1fr auto' },
+    },
+    {
+      variants: { selectable: true, hasActions: true },
+      style: { gridTemplateColumns: 'auto 1fr auto' },
+    },
+  ],
+
+  defaultVariants: { selectable: false, hasActions: false },
 })
 
 /** Kartın tıklanabilir kısmı. Seçim kutusu bunun dışında, kardeşi olarak durur. */
@@ -56,15 +83,42 @@ export const clickRegion = recipe({
 
     selectors: {
       'button&': { cursor: 'pointer' },
+      /*
+        Odak halkası kartın İÇİNE çiziliyor (negatif offset), dışına değil.
+
+        Tıklanabilir bölge kartı dolduruyor ve kartın `overflow: hidden`'ı
+        (kenardan kenara görselin yuvarlak köşeleri için ŞART) global
+        `:focus-visible` kuralının `outlineOffset: 0.125rem`'lik DIŞA taşan
+        halkasını yutuyordu — klavye kullanıcısı odağın nerede olduğunu
+        göremiyordu (Faz 3'te ekran görüntüsüyle doğrulandı). Görseli kırpan
+        `overflow`'u kaldırmak yerine halkayı içeri alıyoruz: negatif offset ile
+        halkanın dış kenarı butonun kutusuyla hizalanıyor, tamamı kırpma
+        sınırının içinde kalıyor ve butonun çevresini eksiksiz sarıyor. Halka
+        `outline` olduğu için içerikle görselin üstüne boyanıyor, gizlenmiyor.
+        (`CategoryTree`'nin dar kolonda kullandığı aynı çözüm.)
+      */
+      'button&:focus-visible': {
+        outline: `0.1875rem solid ${vars.color.focus.ring}`,
+        outlineOffset: '-0.1875rem',
+      },
     },
   },
 
   variants: {
     variant: {
-      /** Kuyrukta ve dar listede: yatay, küçük görsel. */
-      compact: { gridTemplateColumns: 'auto 1fr', alignItems: 'stretch' },
-      /** Detaylı liste: yatay, büyük görsel, tüm meta. */
-      detailed: { gridTemplateColumns: 'auto 1fr', alignItems: 'stretch' },
+      /**
+       * Kuyrukta ve dar listede: yatay, küçük görsel.
+       *
+       * Body sütunu `minmax(0, 1fr)`, düz `1fr` DEĞİL: düz `1fr`'in tabanı
+       * `min-content`'tir ve body'deki (boşluksuz fiyat gibi) değerler onu 320
+       * pikselde media'nın yanına sığmayacak kadar geniş tutup içeriği kartın
+       * `overflow: hidden`'ıyla kırptırırdı. Body'ye `minWidth: 0` yazmak bunu
+       * çözmez — o yalnız öğenin katkısını tabanlar, tavanlayan izin kendisidir
+       * (AGENTS: "NumberInput.input'a minWidth:0 yazmak bunu ÇÖZMEZ").
+       */
+      compact: { gridTemplateColumns: 'auto minmax(0, 1fr)', alignItems: 'stretch' },
+      /** Detaylı liste: yatay, büyük görsel, tüm meta. Body sütunu yine `minmax(0, 1fr)`. */
+      detailed: { gridTemplateColumns: 'auto minmax(0, 1fr)', alignItems: 'stretch' },
       /** Izgara: dikey, üstte görsel. */
       grid: { gridTemplateRows: 'auto 1fr' },
     },
@@ -83,7 +137,19 @@ export const media = recipe({
   variants: {
     variant: {
       compact: { width: '7rem' },
-      detailed: { width: '11rem' },
+      /**
+       * 11rem sabit; ama 320 pikselde bu genişlik body'ye durum rozetini
+       * ("Onaylı / Yayında" ~9.5rem, `nowrap`) sığdıramayacak kadar yer bırakıyor
+       * ve rozet kartın `overflow: hidden`'ıyla kırpılıyordu. Dar ekranda görsel
+       * `compact` ölçüsüne iniyor (ReportCard'ın 30rem eşiğiyle aynı desen) —
+       * viewport sorgusu, çünkü repoda container query yok.
+       */
+      detailed: {
+        width: '11rem',
+        '@media': {
+          'screen and (max-width: 30rem)': { width: '7rem' },
+        },
+      },
       grid: { width: '100%', aspectRatio: '3 / 2' },
     },
   },
@@ -140,6 +206,13 @@ export const topRow = style({
   display: 'flex',
   alignItems: 'flex-start',
   gap: vars.space[3],
+  /**
+   * Dar kartta durum rozeti (`nowrap`, ~9.5rem) başlıkla aynı satıra sığmazsa
+   * kendi satırına insin — başlığı sıfır piksele ezip yanında kalmak yerine.
+   * Geniş kartta ikisi zaten yan yana; sarma yalnız gerçekten sığmayınca devreye
+   * girer.
+   */
+  flexWrap: 'wrap',
 })
 
 export const titleBlock = style({
@@ -159,12 +232,20 @@ export const title = style({
   WebkitLineClamp: 2,
   WebkitBoxOrient: 'vertical',
   overflow: 'hidden',
+  /**
+   * Boşluksuz uzun bir başlık dar kartta (media 11rem sabit, body'ye ~pikseller
+   * kalıyor) `min-content`'e çivilenip kartın `overflow: hidden`'ıyla kırpılırdı.
+   * `anywhere` `min-content`'i düşürür (flex/grid öğesinin otomatik minimumu),
+   * `break-word` düşürmez — böylece içerik kırpılmak yerine sarar.
+   */
+  overflowWrap: 'anywhere',
 })
 
 export const listingNo = style({
   fontSize: vars.font.size.sm,
   color: vars.color.text.muted,
   fontVariantNumeric: 'tabular-nums',
+  overflowWrap: 'anywhere',
 })
 
 export const meta = style({
@@ -180,6 +261,8 @@ export const metaItem = style({
   alignItems: 'center',
   gap: vars.space[1],
   minWidth: 0,
+  /** Uzun ilçe/şehir adı dar kartta kırpılmasın, sarsın. */
+  overflowWrap: 'anywhere',
 })
 
 export const price = style({
@@ -187,12 +270,15 @@ export const price = style({
   fontWeight: vars.font.weight.bold,
   color: vars.color.text.primary,
   fontVariantNumeric: 'tabular-nums',
+  /** "12.500.000 ₺" boşluk taşımaz; dar kartta ancak `anywhere` ile sarar. */
+  overflowWrap: 'anywhere',
 })
 
 export const priceMissing = style({
   fontSize: vars.font.size.sm,
   fontWeight: vars.font.weight.medium,
   color: vars.color.danger[800],
+  overflowWrap: 'anywhere',
 })
 
 export const badges = style({
@@ -212,11 +298,29 @@ export const moderationMeta = style({
   color: vars.color.text.muted,
 })
 
-export const actions = style({
+/** Durum rozetinin (StatusBadge) sağ üstteki yeri. Etkileşimsiz — butonun içinde kalır. */
+export const statusSlot = style({
   display: 'flex',
   gap: vars.space[2],
   alignItems: 'center',
   flexShrink: 0,
+})
+
+/**
+ * Eylemler tıklanabilir bölgenin (butonun) KARDEŞİ, çocuğu değil: iç içe
+ * etkileşimli element olmasın (bkz. card recipe `hasActions`). Kartın grid'inde
+ * en sağdaki sütun; üstten hizalı, sağ üstte durur.
+ */
+export const actionsSlot = style({
+  display: 'flex',
+  gap: vars.space[2],
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
+  alignSelf: 'start',
+  flexShrink: 0,
+  padding: vars.space[4],
+  paddingInlineStart: 0,
 })
 
 export const selectionCell = style({

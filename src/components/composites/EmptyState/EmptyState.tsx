@@ -13,9 +13,11 @@ import * as css from './EmptyState.css'
  * ve `primaryAction` ile geçer. Yetkisi olmayan kullanıcıya eylem geçilmez —
  * `disabled` buton değil, hiç buton.
  *
- * Başlık `<p>`'dir, `<h2>` değil: component hangi başlık seviyesinde durduğunu
- * bilemez ve yanlış seviye, belge taslağını ekran okuyucu için bozar. Görsel
- * ağırlık stille verilir.
+ * Başlık varsayılan olarak `<p>`'dir, `<h2>` değil: bir composite hangi başlık
+ * seviyesinde durduğunu bilemez ve kör bir `<h3>` `heading-order` ihlali riski
+ * taşır. Görsel ağırlık stille verilir. Ama **düzeyini bilen** bir tam sayfa
+ * ekran (`AuthScreen`) `headingLevel` geçebilir; o zaman başlık `<h{n}>` olur ve
+ * görünüm birebir aynı kalır — yalnız DOM'daki element türü değişir.
  *
  * `illustration` dekoratiftir ve ekran okuyucudan gizlenir; anlamı `title`
  * taşımalıdır.
@@ -34,9 +36,18 @@ export function EmptyState({
   illustration,
   primaryAction,
   secondaryAction,
+  headingLevel,
   variant = 'default',
 }: EmptyStateProps) {
   const eylemVar = primaryAction !== undefined || secondaryAction !== undefined
+
+  // Düzeyini yalnız *bilen* çağıran verir; verilmezse `<p>` kalır (Faz 3 öncesi
+  // davranış, geriye dönük uyum). Element türü değişir, görünüm değişmez:
+  // `css.title`'ın `margin: 0`'ı `<h*>`'nin taşıdığı tarayıcı margin'ini de
+  // sıfırlar (aynı reset tuzağı — sıfırlanmazsa `compact`/`default` farkı kaybolur),
+  // font/ağırlık/boşluk recipe'ten geldiği için başlık `<p>` ile birebir aynı görünür.
+  const Heading = (headingLevel !== undefined ? `h${headingLevel}` : 'p') as
+    'p' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
 
   return (
     <div className={css.root({ variant })}>
@@ -46,7 +57,7 @@ export function EmptyState({
         </span>
       ) : null}
 
-      <p className={css.title({ variant })}>{title}</p>
+      <Heading className={css.title({ variant })}>{title}</Heading>
 
       {description !== undefined ? <p className={css.description}>{description}</p> : null}
 

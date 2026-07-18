@@ -13,10 +13,12 @@ import * as css from './DataTable.css'
  * `Listing` alır, `unknown` değil — brifingin "generic DataTable satır tipini
  * korumalıdır" kriteri budur.
  *
- * `mobileMode` dar ekranda ne olacağını belirler:
+ * `mobileMode` dar ekranda ne olacağını belirler ve viewport'a **kendisi** bakar:
  * - `scroll`: tablo yatay kaydırılır. Sütunlar önemliyse (audit log) uygundur.
- * - `cards`: her satır karta dönüşür. Okunabilirlik önemliyse (ilan listesi) uygundur;
- *   `renderMobileCard` ile satırın kart görünümü verilir.
+ * - `cards`: 48rem'in altında her satır karta dönüşür, üstünde tablo kalır.
+ *   Okunabilirlik önemliyse (ilan listesi) uygundur; `renderMobileCard` ile satırın
+ *   kart görünümü verilir. İki dal da DOM'da durur, birini medya sorgusu boyar —
+ *   tüketici viewport'a göre dal seçmez, yalnız `mobileMode="cards"` der.
  *
  * Sıralanabilir başlıklar `<button>`'dır — `<th onClick>` klavyeyle erişilemez.
  *
@@ -170,28 +172,31 @@ export function DataTable<T extends { id: string }>({
     )
   }
 
-  /* ── Mobil kart görünümü ── */
+  /* ── Kart / tablo görünümü ──
+     `mobileMode="cards"` artık viewport'a KENDİSİ bakıyor: 48rem'in altında kart,
+     üstünde tablo. İki dal da DOM'da kalır; hangisinin boyanacağına CSS medya
+     sorgusu karar verir (`css.cards` yalnız <48rem, `css.tableInCards` yalnız
+     ≥48rem görünür). Boyanmayan dal `display: none` ile erişilebilirlik ağacından
+     da çıkar — SidebarNav'ın ray/çekmece öncülüyle aynı; ekran okuyucu kullanıcısı
+     aynı satırları iki kez gezmez. Eşik 48rem, AppShell/FilterBar ile aynı.
 
-  if (mobileMode === 'cards' && renderMobileCard !== undefined) {
-    return (
-      <div className={css.cards}>
-        {rows.map((row) => {
-          const id = anahtar(row)
-          const secili = selectedIds.includes(id)
-          return (
-            <div key={id} className={css.cardRow} data-selected={secili ? '' : undefined}>
-              {renderMobileCard(row)}
-            </div>
-          )
-        })}
-      </div>
-    )
-  }
+     Tüketici ekranlar bu yüzden artık iki dalı elle render etmiyor: yalnız
+     `mobileMode="cards"` diyor, doğru olanı DataTable çiziyor.
 
-  /* ── Tablo ── */
+     `mobileMode="scroll"` bu dala HİÇ girmez: tabloyu koruyup yatay kaydırır,
+     viewport'tan bağımsız zaten doğru. `cards` verilse de `renderMobileCard`
+     verilmemişse yine tabloya düşülür — çizilecek kart şablonu yok. */
 
-  return (
-    <div className={css.wrapper({ visualStyle })}>
+  const kartModu = mobileMode === 'cards' && renderMobileCard !== undefined
+
+  const tablo = (
+    <div
+      className={
+        kartModu
+          ? `${css.wrapper({ visualStyle })} ${css.tableInCards}`
+          : css.wrapper({ visualStyle })
+      }
+    >
       {/*
         `tabIndex={0}`: tablo dar ekranda yatay kaydırılır. Seçilebilir veya
         linkli tabloda kutular/linkler kabı klavyeye açıyordu, ama salt okunur
@@ -306,4 +311,25 @@ export function DataTable<T extends { id: string }>({
       </div>
     </div>
   )
+
+  if (mobileMode === 'cards' && renderMobileCard !== undefined) {
+    return (
+      <>
+        <div className={css.cards}>
+          {rows.map((row) => {
+            const id = anahtar(row)
+            const secili = selectedIds.includes(id)
+            return (
+              <div key={id} className={css.cardRow} data-selected={secili ? '' : undefined}>
+                {renderMobileCard(row)}
+              </div>
+            )
+          })}
+        </div>
+        {tablo}
+      </>
+    )
+  }
+
+  return tablo
 }

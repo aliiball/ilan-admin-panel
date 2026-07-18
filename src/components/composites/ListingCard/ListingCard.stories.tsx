@@ -189,6 +189,92 @@ export const CheckboxIsNotNestedInButton: Story = {
   },
 }
 
+/**
+ * Odak halkası kırpılmamalı.
+ *
+ * Kartın `overflow: hidden`'ı kenardan kenara görselin yuvarlak köşeleri için
+ * ŞART, ama global `:focus-visible` kuralının DIŞA taşan halkasını (offset
+ * `+0.125rem`) yutuyordu — klavye kullanıcısı odağı göremezdi. Çözüm halkayı
+ * İÇERİ almak: buton kendi `:focus-visible`'ında negatif offset veriyor, halka
+ * butonun kutusunun tamamında ve kırpma sınırının içinde kalıyor. Testler
+ * geçerken stilin bozuk kaldığı bu repoda görüldü — hesaplanan stil ölçülüyor.
+ */
+export const FocusRingIsNotClipped: Story = {
+  args: { onClick: fn() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    const kart = canvas.getByRole('article')
+    /* Görselin köşe kırpması için kart hâlâ kırpıyor. */
+    await expect(getComputedStyle(kart).overflow).toBe('hidden')
+
+    const kartButonu = canvas.getByRole('button')
+    await userEvent.tab()
+    await expect(kartButonu).toHaveFocus()
+
+    const stil = getComputedStyle(kartButonu)
+    /* Halka çiziliyor... */
+    await expect(stil.outlineStyle).toBe('solid')
+    /* ...ve İÇERİ doğru (negatif offset), yani kırpan ata onu yutamaz. */
+    await expect(Number.parseFloat(stil.outlineOffset)).toBeLessThan(0)
+  },
+}
+
+/**
+ * Etkileşimli `actions` tıklanabilir bölgenin İÇİNDE değil, kardeşi olmalı.
+ *
+ * Aksi hâlde buton içinde buton olur: geçersiz HTML + axe `nested-interactive`,
+ * ve içteki buton klavyeyle ulaşılamaz kalır. Eyleme tıklamak kartın
+ * `onClick`'ini de tetiklememeli.
+ */
+export const ActionsAreNotNestedInButton: Story = {
+  args: {
+    variant: 'detailed',
+    onClick: fn(),
+    actions: <IconButton icon={<MoreVertical size={16} />} label="Diğer işlemler" size="sm" />,
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    /* Başlıkta "3+1" var; `+` regex niceleyicisi olduğu için ham başlık RegExp'e verilemez. */
+    const kartButonu = canvas.getByRole('button', { name: /Caferağa'da Asansörlü Binada Ferah/ })
+    const eylem = canvas.getByRole('button', { name: 'Diğer işlemler' })
+
+    await expect(kartButonu).not.toContainElement(eylem)
+
+    await userEvent.click(eylem)
+    await expect(args.onClick).not.toHaveBeenCalled()
+
+    await userEvent.click(kartButonu)
+    await expect(args.onClick).toHaveBeenCalledWith(residentialPublishedApartment)
+  },
+}
+
+/**
+ * `detailed` 320 pikselde içeriği kırpmamalı, sarmalı.
+ *
+ * Media 11rem sabit; body'ye kalan pikseller azken boşluksuz değerler (fiyat,
+ * uzun başlık) `min-content`'e çivilenip kartın `overflow: hidden`'ıyla
+ * kırpılıyordu — köke taşma olarak yansımadığı için hiçbir test görmüyordu.
+ * `overflow-wrap: anywhere` içeriği sardırıyor: `scrollWidth <= clientWidth`.
+ */
+export const DetailedDoesNotClipAt320: Story = {
+  globals: { viewport: { value: 'mobile320' } },
+  args: { variant: 'detailed', showModerationMeta: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    const kart = canvas.getByRole('article')
+    /*
+      Kırpılan içerik `overflow: hidden` altında bile scrollWidth'e yansır. 320px
+      viewport'ta media 7rem'e iniyor (media sorgusu KAB'a değil viewport'a bakar;
+      bu yüzden story 20rem'lik bir kapla değil `mobile320` ile ölçülüyor) ve
+      durum rozeti body'ye sığıyor.
+    */
+    await expect(kart.scrollWidth).toBeLessThanOrEqual(kart.clientWidth + 1)
+  },
+}
+
 export const VariantsComparison: Story = {
   render: (args) => (
     <div style={{ display: 'grid', gap: '1.5rem' }}>

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
 import { Hash, Search } from 'lucide-react'
 import { Input } from './Input'
 
@@ -81,6 +82,61 @@ export const WithError: Story = {
     error: 'İlan başlığı en az 10 karakter olmalıdır',
     helperText: 'Bu metin hata varken gizlenir',
     defaultValue: 'Daire',
+  },
+}
+
+/**
+ * Mesajsız geçersiz: kırmızı kenarlık ve `aria-invalid`, ama alanın altında
+ * metin **yok**. Giriş ekranı gibi geçersizliğin alan bazında bir cümle
+ * üretmediği (hata tek bir üst uyarı olan) yerler için.
+ */
+export const Invalid: Story = {
+  args: { invalid: true, defaultValue: 'abc' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /*
+      Kenarlık DOM'dan ölçülüyor: kırmızıyı çizen kural `&[data-invalid]` ve o
+      işaret kutudadır (input'un span atası) — `closest()` ile atayı bulup
+      "geçti" demek yerine işaretin gerçekten kutuda olduğunu doğruluyoruz.
+    */
+    const input = canvas.getByRole('textbox')
+    await expect(input).toHaveAttribute('aria-invalid', 'true')
+
+    const kutu = input.closest('[data-invalid]')
+    await expect(kutu).not.toBeNull()
+
+    /*
+      Mesaj YOK: `invalid` mesajsızdır. Base UI, altta bir Description/Error
+      render edilmediği için input'a `aria-describedby` de bağlamaz — "alan
+      altında metin yok"un DOM'daki karşılığı budur.
+    */
+    await expect(input).not.toHaveAttribute('aria-describedby')
+  },
+}
+
+/**
+ * `error` ve `invalid` birlikte verilince **`error` kazanır**: kutu yine
+ * kırmızı ama bu kez mesaj da görünür. `invalid`'in "mesajsız" olması onu
+ * bastırmaz — öncelik `error`'dadır.
+ */
+export const ErrorWinsOverInvalid: Story = {
+  args: {
+    error: 'İlan başlığı en az 10 karakter olmalıdır',
+    invalid: true,
+    defaultValue: 'Daire',
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    const input = canvas.getByRole('textbox')
+    await expect(input).toHaveAttribute('aria-invalid', 'true')
+
+    const kutu = input.closest('[data-invalid]')
+    await expect(kutu).not.toBeNull()
+
+    /* error kazanır: mesaj görünür (invalid tek başına bunu yapmazdı). */
+    await expect(canvas.getByText('İlan başlığı en az 10 karakter olmalıdır')).toBeInTheDocument()
   },
 }
 

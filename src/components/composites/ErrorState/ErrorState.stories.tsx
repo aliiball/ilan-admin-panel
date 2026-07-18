@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, within } from 'storybook/test'
+import { Button } from '../../primitives/Button'
 import { ErrorState } from './ErrorState'
 
 const VARYANTLAR = ['page', 'section', 'inline'] as const
@@ -51,6 +52,8 @@ const meta = {
     description: { control: 'text' },
     code: { control: 'text' },
     retryLabel: { control: 'text' },
+    headingLevel: { control: 'inline-radio', options: [undefined, 1, 2, 3, 4, 5, 6] },
+    secondaryAction: { control: false },
   },
 } satisfies Meta<typeof ErrorState>
 
@@ -155,6 +158,78 @@ export const NonRetryableHasNoButton: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await expect(canvas.queryByRole('button')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Tam sayfa bir hata ekranı sayfanın `<h1>`'idir: düzeyini bilen çağıran
+ * `headingLevel={1}` geçer, başlık gerçek bir `<h1>` olur. Rol/düzeyle ölçülüyor
+ * — `<p>` de aynı metni taşıdığından metin veya görünürlük yeterli değil.
+ */
+export const HeadingLevel: Story = {
+  args: { variant: 'page', headingLevel: 1, code: 'NETWORK_TIMEOUT', onRetry: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+    const heading = canvas.getByRole('heading', { level: 1 })
+    await expect(heading).toHaveTextContent(args.title)
+  },
+}
+
+/**
+ * `headingLevel` verilmezse başlık `<p>` kalır (geriye dönük uyum): section/inline
+ * bir hata sayfanın taslağında bir düzey işgal etmemeli. Ağaçta hiç heading yok.
+ */
+export const TitleIsNotAHeadingByDefault: Story = {
+  args: { variant: 'section', onRetry: fn() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByRole('heading')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Güvenli geri dönüş bağlantısı (brifing 2.1) "Tekrar dene"nin yanında. İkisi
+ * birlikte olabilir: geçici bir hata hem yeniden denenebilir hem de bir çıkış sunar.
+ */
+export const WithSecondaryAction: Story = {
+  args: {
+    variant: 'section',
+    title: 'Moderasyon geçmişi yüklenemedi',
+    description: 'Bu ilanın olay kaydına şu an ulaşılamıyor.',
+    onRetry: fn(),
+    secondaryAction: (
+      <Button variant="ghost" size="md">
+        Panele dön
+      </Button>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole('button', { name: /Tekrar dene/ })).toBeInTheDocument()
+    await expect(canvas.getByRole('button', { name: /Panele dön/ })).toBeInTheDocument()
+  },
+}
+
+/**
+ * 403'te "tekrar dene" yoktur ama "geri dön" vardır: `onRetry` verilmese de
+ * `secondaryAction` tek başına görünmeli — yeniden deneme butonu ise hiç çıkmaz.
+ */
+export const SecondaryActionWithoutRetry: Story = {
+  args: {
+    variant: 'page',
+    title: 'Bu sayfayı görme yetkiniz yok',
+    description: 'İlan moderasyonu yetkisi hesabınıza tanımlı değil. Yöneticinizle görüşün.',
+    code: 'FORBIDDEN',
+    secondaryAction: (
+      <Button variant="ghost" size="md">
+        Panele dön
+      </Button>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole('button', { name: /Panele dön/ })).toBeInTheDocument()
+    await expect(canvas.queryByRole('button', { name: /Tekrar dene/ })).not.toBeInTheDocument()
   },
 }
 

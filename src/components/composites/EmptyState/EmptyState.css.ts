@@ -60,8 +60,14 @@ export const title = recipe({
     // `<p>`'nin tarayıcı varsayılanı `margin-block: 1em`; global reset yalnız
     // `body`'yi sıfırlıyor. Sıfırlanmazsa bu margin `gap` token'larının üstüne
     // biner ve dikey ritmi token'lar değil tarayıcı belirler — `compact` ile
-    // `default` arasındaki fark da kaybolur.
+    // `default` arasındaki fark da kaybolur. Aynı sınıf `headingLevel` verilince
+    // `<h{n}>`'ye de uygulanıyor: `<h2>`'nin tarayıcı margin'i (`0.83em` gibi)
+    // daha da büyüktür, `margin: 0` onu da siler; başlık `<p>` ile birebir aynı
+    // kalır, yalnız element türü değişir.
     margin: 0,
+    // Flex/grid öğesinin otomatik minimumu `min-content`; uzun kırılmaz bir başlık
+    // kabı taşırmasın (`break-word` min-content'i değiştirmez, `anywhere` değiştirir).
+    overflowWrap: 'anywhere',
     color: vars.color.text.primary,
     fontWeight: vars.font.weight.semibold,
     lineHeight: vars.lineHeight.heading,

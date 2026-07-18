@@ -61,9 +61,8 @@ export function ListingCard({
           <span className={css.listingNo}>İlan no: {listing.listingNo}</span>
         </div>
 
-        <div className={css.actions}>
+        <div className={css.statusSlot}>
           <StatusBadge status={listing.status} size="sm" showDot />
-          {actions}
         </div>
       </div>
 
@@ -138,9 +137,10 @@ export function ListingCard({
    * Tıklanabilir bölge `<button>`'dır — `<div onClick>` klavyeyle erişilemez ve
    * ekran okuyucuya tıklanabilir olduğunu söylemez.
    *
-   * Ama buton kartın TAMAMINI sarmaz: seçim kutusu da etkileşimli, iç içe
-   * etkileşimli element geçersiz HTML olur ve checkbox klavyeyle ulaşılamaz
-   * hale gelir. Bu yüzden checkbox butonun kardeşidir, çocuğu değil.
+   * Ama buton kartın TAMAMINI sarmaz: hem seçim kutusu hem `actions` etkileşimli
+   * olabilir; ikisini de butonun İÇİNE koymak iç içe etkileşimli element (geçersiz
+   * HTML + axe `nested-interactive`) üretir ve içteki kontrolü klavyeyle
+   * ulaşılamaz kılar. Bu yüzden ikisi de butonun kardeşidir, çocuğu değil.
    */
   const tiklanabilirBolge = tiklanabilir ? (
     <button type="button" className={css.clickRegion({ variant })} onClick={() => onClick(listing)}>
@@ -156,7 +156,10 @@ export function ListingCard({
 
   return (
     <article
-      className={css.card({ selectable: onSelectedChange !== undefined })}
+      className={css.card({
+        selectable: onSelectedChange !== undefined,
+        hasActions: actions !== undefined,
+      })}
       data-selected={selected ? '' : undefined}
       data-flagged={flagged ? '' : undefined}
       data-clickable={tiklanabilir ? '' : undefined}
@@ -171,6 +174,8 @@ export function ListingCard({
         </div>
       ) : null}
       {tiklanabilirBolge}
+      {/* Eylemler butonun kardeşi: iç içe etkileşimli element olmasın. */}
+      {actions !== undefined ? <div className={css.actionsSlot}>{actions}</div> : null}
     </article>
   )
 }

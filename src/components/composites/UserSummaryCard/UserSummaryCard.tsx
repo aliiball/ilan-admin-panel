@@ -66,35 +66,23 @@ function dogrulamaEtiketi(verified: boolean): string {
 }
 
 /**
- * Ad–değer çifti. `<dl>`/`<dt>`/`<dd>` semantik olarak tam da bu, ama üçü de
- * tarayıcı varsayılanı taşıyor — özellikle `<dd>`'nin 40 piksellik
- * `margin-inline-start`'ı. Sıfırlaması `.css.ts`'te.
+ * Ad–değer çifti — hem hesap alanları hem yaptırım kaydı için **tek** blok.
+ *
+ * `<dl>`/`<dt>`/`<dd>` semantik olarak tam da bu, ama kullanılamıyor: `onClick`
+ * verilen kartın kökü bir `<button>`'a dönüyor ve `icerik` o butonla `<div>`
+ * arasında tek koddan paylaşıldığı için içindeki her şey **her iki hâlde de**
+ * phrasing content olmak zorunda — `<button>` yalnız phrasing content alır,
+ * `<dl>`/`<div>`/`<dt>`/`<dd>` orada geçersiz HTML olur. Bu yüzden ızgara
+ * `<span>` + `display: grid` ile kuruluyor: ad–değer düzeni görsel olarak
+ * korunuyor (etiket kolonu + değer kolonu), element `<dl>` olmuyor.
+ *
+ * Emsal ReportCard: aynı çatışmayı `<span>` + grid lehine çözdü ("`<dl>`
+ * semantik olarak daha doğru olurdu ama kullanılamıyor"). Span'e geçince
+ * `<dd>`'nin 40 piksellik `margin-inline-start`'ı da düşer — dikey/yatay ritmi
+ * artık yalnız `css.fact`/`css.facts`'ın `gap` token'ı belirliyor, tarayıcı
+ * margin'i değil.
  */
 function Bilgi({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className={css.fact}>
-      <dt className={css.factLabel}>{label}</dt>
-      <dd className={css.factValue}>{children}</dd>
-    </div>
-  )
-}
-
-/**
- * Yaptırım kaydının ad–değer çifti. `Bilgi` ile **aynı ızgarayı** kullanır
- * (`css.fact`/`factLabel`/`factValue`) ama `<dl>`/`<dt>`/`<dd>` yerine
- * `<span>`'lerden kurulur.
- *
- * Sebep sözleşme değil HTML: `onClick` verilen kart bir `<button>`'a dönüyor ve
- * butonun bütün çocukları phrasing content olmak zorunda — `<dl>` orada geçersiz.
- * Aynı çatışmayı ReportCard da yaşadı ve aynı yönde çözdü ("`<dl>` semantik
- * olarak daha doğru olurdu ama kullanılamıyor"). `<dt>`/`<dd>` kullanmak üstelik
- * karta **yeni bir `<dl>`** eklemeyi gerektirirdi; span'ler hiçbir şey eklemiyor.
- *
- * Dikkat: kartın hesap alanları (`Bilgi`) hâlâ `<dl>` kullanıyor ve bu kart
- * tıklanabilir olduğu için o **var olan bir ihlal** — bu turda bilerek
- * dokunulmadı, raporlandı. Burada çoğaltılmadı.
- */
-function YaptirimBilgisi({ label, children }: { label: string; children: ReactNode }) {
   return (
     <span className={css.fact}>
       <span className={css.factLabel}>{label}</span>
@@ -296,10 +284,10 @@ export function UserSummaryCard({
           ve bant satırı iki katına çıkarırdı.
         */}
         {variant !== 'compact' && yaptirimTipi !== null ? (
-          <p className={css.sanction}>
+          <span className={css.sanction}>
             <Ban size={16} aria-hidden="true" />
             Yürürlükte olan yaptırım: {USER_SANCTION_TYPE_LABEL[yaptirimTipi]}
-          </p>
+          </span>
         ) : null}
 
         {/*
@@ -313,14 +301,14 @@ export function UserSummaryCard({
           <span className={css.sanctionFacts}>
             {variant === 'security' ? (
               <>
-                <YaptirimBilgisi label="Gerekçe">{activeSanction.reason}</YaptirimBilgisi>
-                <YaptirimBilgisi label="Başlangıç">
+                <Bilgi label="Gerekçe">{activeSanction.reason}</Bilgi>
+                <Bilgi label="Başlangıç">
                   <Zaman value={activeSanction.startsAt} saatli />
-                </YaptirimBilgisi>
+                </Bilgi>
               </>
             ) : null}
 
-            <YaptirimBilgisi label="Bitiş">
+            <Bilgi label="Bitiş">
               {activeSanction.endsAt !== undefined ? (
                 <Zaman value={activeSanction.endsAt} saatli />
               ) : (
@@ -333,7 +321,7 @@ export function UserSummaryCard({
                 */
                 <span className={css.missing}>Süresiz</span>
               )}
-            </YaptirimBilgisi>
+            </Bilgi>
 
             {/*
               Kararı veren admin ham UUID olarak yazılıyor: kart veri çekmez ve
@@ -341,9 +329,7 @@ export function UserSummaryCard({
               `reporterUserId`/`assignedAdminId` boşluğunun aynısı — raporlandı.
             */}
             {variant === 'security' ? (
-              <YaptirimBilgisi label="Karar veren">
-                {activeSanction.createdByAdminId}
-              </YaptirimBilgisi>
+              <Bilgi label="Karar veren">{activeSanction.createdByAdminId}</Bilgi>
             ) : null}
           </span>
         ) : null}
@@ -362,7 +348,7 @@ export function UserSummaryCard({
           Kademe artık gerçekten kademeli: compact ⊂ detailed ⊂ security.
         */}
         {variant !== 'compact' ? (
-          <dl className={css.facts}>
+          <span className={css.facts}>
             <Bilgi label="E-posta">{user.email}</Bilgi>
             <Bilgi label="Telefon">{user.phone}</Bilgi>
             <Bilgi label="İlan">
@@ -372,11 +358,11 @@ export function UserSummaryCard({
             <Bilgi label="Kayıt">
               <Zaman value={user.createdAt} saatli={false} />
             </Bilgi>
-          </dl>
+          </span>
         ) : null}
 
         {variant === 'security' ? (
-          <dl className={css.facts}>
+          <span className={css.facts}>
             <Bilgi label="Son giriş">
               {user.lastLoginAt !== undefined ? (
                 <Zaman value={user.lastLoginAt} saatli />
@@ -405,7 +391,7 @@ export function UserSummaryCard({
                 <span className={css.clean}>Açık şikayet yok</span>
               )}
             </Bilgi>
-          </dl>
+          </span>
         ) : null}
       </div>
     </>

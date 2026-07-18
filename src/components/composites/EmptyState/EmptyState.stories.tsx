@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
 import { FileQuestion, Inbox, SearchX } from 'lucide-react'
 import { Button } from '../../primitives/Button'
 import { EmptyState } from './EmptyState'
@@ -44,6 +45,7 @@ const meta = {
     variant: { control: 'inline-radio', options: VARYANTLAR },
     title: { control: 'text' },
     description: { control: 'text' },
+    headingLevel: { control: 'inline-radio', options: [undefined, 2, 3, 4, 5, 6] },
     illustration: { control: false },
     primaryAction: { control: false },
     secondaryAction: { control: false },
@@ -121,6 +123,40 @@ export const Mobile: Story = {
     illustration: <Inbox size={40} />,
     primaryAction: <Button>İlan oluştur</Button>,
     secondaryAction: <Button variant="secondary">Nasıl çalışır?</Button>,
+  },
+}
+
+/**
+ * Düzeyini bilen bir tam sayfa ekran `headingLevel` geçer; başlık gerçek bir
+ * `<h{n}>` olur. Element türü rol/etiketle ölçülüyor (görünürlük veya metin
+ * yeterli değil — `<p>` de aynı metni taşır).
+ */
+export const HeadingLevel: Story = {
+  args: {
+    headingLevel: 2,
+    illustration: <Inbox size={48} />,
+    title: 'Henüz ilan eklenmemiş',
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+    const heading = canvas.getByRole('heading', { level: 2 })
+    await expect(heading).toHaveTextContent(args.title)
+  },
+}
+
+/**
+ * `headingLevel` verilmezse başlık `<p>` kalır (Faz 3 öncesi davranış, geriye
+ * dönük uyum): erişilebilirlik ağacında **hiç** heading olmamalı — kör bir `<h3>`
+ * `heading-order` ihlali riskiydi.
+ */
+export const TitleIsNotAHeadingByDefault: Story = {
+  args: {
+    illustration: <Inbox size={48} />,
+    title: 'Henüz ilan eklenmemiş',
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByRole('heading')).not.toBeInTheDocument()
   },
 }
 

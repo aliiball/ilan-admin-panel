@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { fn } from 'storybook/test'
+import { expect, fn, within } from 'storybook/test'
 import type { RadioOption } from '../../../types/component-props'
 import { RadioGroup } from './RadioGroup'
 
@@ -76,6 +76,40 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
+
+/**
+ * Seçeneğin erişilebilir adı **grubun adı değil, kendi etiketidir**.
+ *
+ * FieldShell'in `Field.Root`'u grubun etiket id'sini paylaşılan LabelableContext'e
+ * yazıyordu ve o id her `Radio`'nun `aria-labelledby`'sine sızıp üç seçeneği de
+ * "Moderasyon kararı" diye okutuyordu (ad eksik değil, yanlış — axe yakalamaz).
+ * Her seçenek artık `Field.Item` ile kendi labelable kapsamına alındığından ad
+ * grubun adını devralmıyor. `getByRole('radio', { name })` yalnız doğru bağda
+ * geçer; grubun kendi adı `radiogroup` rolünde durur.
+ *
+ * Açıklamalı seçenekte ad **yalnız etiketten** gelir (Switch'in `description` adına
+ * karışma tuzağının kardeşi): açıklama `aria-describedby`'ye bağlanır, ada girmez.
+ */
+export const AccessibleNamePerOption: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Grubun kendi adı radiogroup rolünde. */
+    const grup = canvas.getByRole('radiogroup', { name: 'Moderasyon kararı' })
+
+    /* Üç seçenek de kendi adıyla bulunuyor — grubun adı sızmıyor. */
+    const onayla = within(grup).getByRole('radio', { name: 'Onayla' })
+    within(grup).getByRole('radio', { name: 'Düzeltme iste' })
+    within(grup).getByRole('radio', { name: 'Reddet' })
+
+    /* Grubun adını taşıyan bir seçenek yok. */
+    await expect(within(grup).queryByRole('radio', { name: 'Moderasyon kararı' })).toBeNull()
+
+    /* Açıklama ada karışmıyor: ad tam olarak etiket, açıklama describedby'de. */
+    await expect(onayla).toHaveAccessibleName('Onayla')
+    await expect(onayla).toHaveAccessibleDescription('İlan hemen yayına alınır.')
+  },
+}
 
 export const Selected: Story = {
   args: { value: 'approve' },

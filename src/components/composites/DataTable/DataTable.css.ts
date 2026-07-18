@@ -170,9 +170,40 @@ export const stateBlock = style({
   textAlign: 'center',
 })
 
+/**
+ * Kart görünümü — yalnız <48rem.
+ *
+ * `mobileMode="cards"` artık viewport'a **kendisi** bakıyor: hem kart dalı hem
+ * tablo dalı DOM'da durur, birini medya sorgusu boyar. Kartlar dar ekranda
+ * görünür, 48rem ve üstünde `display: none` ile hem boyadan hem erişilebilirlik
+ * ağacından çıkar (SidebarNav ray/çekmece öncülü). Eşik 48rem: AppShell'in menü
+ * kolonu ve FilterBar'ın geniş alan kırılımıyla birebir aynı — tüketici ekranlar
+ * (ListingListPage/UserManagementPage/ReportManagementPage) bu yüzden artık
+ * kendi çift-render telafisini kaldırıp düz `mobileMode="cards"` diyor.
+ *
+ * Repoda container query yok; karar viewport medya sorgusuyla veriliyor.
+ */
 export const cards = style({
   display: 'grid',
   gap: vars.space[3],
+
+  '@media': {
+    'screen and (min-width: 48rem)': { display: 'none' },
+  },
+})
+
+/**
+ * Tablo dalı `mobileMode="cards"` içindeyken — yalnız ≥48rem. `cards`'ın
+ * simetriği. Yalnız kart modunda `wrapper`'a ekleniyor; `scroll` ve varsayılan
+ * dallarda tablo her viewport'ta görünür kaldığından bu sınıf onlara verilmez
+ * (geriye dönük uyum: `cards` vermeyen tüketici hiç etkilenmez).
+ */
+export const tableInCards = style({
+  display: 'none',
+
+  '@media': {
+    'screen and (min-width: 48rem)': { display: 'block' },
+  },
 })
 
 export const cardRow = style({

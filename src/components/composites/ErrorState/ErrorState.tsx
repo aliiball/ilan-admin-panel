@@ -23,7 +23,13 @@ const IKON_BOYUTU = { page: 32, section: 24, inline: 18 } as const
  * Hata yalnız renkle anlatılmaz: kırmızı zeminin yanında üçgen ikon ve metin de
  * vardır.
  *
- * Başlık `<p>`'dir — gerekçesi için bkz. `EmptyState`.
+ * Başlık varsayılan olarak `<p>`'dir — gerekçesi için bkz. `EmptyState`.
+ * `headingLevel` verilirse `<h{n}>` olur (`variant="page"` bir tam sayfa ekranda
+ * `<h1>` ister); görünüm birebir aynı kalır, yalnız element türü değişir.
+ *
+ * `secondaryAction` "Tekrar dene"nin yanına bir güvenli geri dönüş bağlantısı
+ * koyar (brifing 2.1). `onRetry` yokken de görünebilir: 403'te "tekrar dene" yok
+ * ama "geri dön" vardır.
  *
  * @example
  * <ErrorState
@@ -41,7 +47,19 @@ export function ErrorState({
   retryLabel = 'Tekrar dene',
   variant = 'page',
   onRetry,
+  secondaryAction,
+  headingLevel,
 }: ErrorStateProps) {
+  // Bkz. EmptyState: düzeyini bilen çağıran verir, verilmezse `<p>` kalır. Burada
+  // `1`'e de izin var — tam sayfa (`variant="page"`) bir hata ekranı sayfanın
+  // `<h1>`'idir. `css.title`'ın `margin: 0`'ı `<h*>`'nin tarayıcı margin'ini de siler.
+  const Heading = (headingLevel !== undefined ? `h${headingLevel}` : 'p') as
+    'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+
+  // `onRetry` yoksa "tekrar dene" çıkmaz, ama `secondaryAction` (geri dönüş) tek
+  // başına da görünebilmeli — kutu ikisinden biri varsa açılır.
+  const eylemVar = onRetry !== undefined || secondaryAction !== undefined
+
   return (
     <div className={css.root({ variant })} data-variant={variant} role="alert">
       <span className={css.icon} aria-hidden="true">
@@ -49,7 +67,7 @@ export function ErrorState({
       </span>
 
       <div className={css.content}>
-        <p className={css.title}>{title}</p>
+        <Heading className={css.title}>{title}</Heading>
         <p className={css.description}>{description}</p>
 
         {code !== undefined ? (
@@ -59,16 +77,19 @@ export function ErrorState({
         ) : null}
       </div>
 
-      {onRetry !== undefined ? (
+      {eylemVar ? (
         <div className={css.actions}>
-          <Button
-            variant="secondary"
-            size={variant === 'inline' ? 'sm' : 'md'}
-            leadingIcon={<RefreshCw size={16} />}
-            onClick={onRetry}
-          >
-            {retryLabel}
-          </Button>
+          {onRetry !== undefined ? (
+            <Button
+              variant="secondary"
+              size={variant === 'inline' ? 'sm' : 'md'}
+              leadingIcon={<RefreshCw size={16} />}
+              onClick={onRetry}
+            >
+              {retryLabel}
+            </Button>
+          ) : null}
+          {secondaryAction}
         </div>
       ) : null}
     </div>

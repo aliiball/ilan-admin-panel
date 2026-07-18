@@ -24,11 +24,21 @@ export function Input({
   label,
   helperText,
   error,
+  invalid = false,
   required = false,
   disabled = false,
   className,
   ...rest
 }: InputProps) {
+  /*
+    Öncelik `error`'da: dolu bir `error` hem kutuyu kırmızıya boyar hem mesajı
+    alanın altına basar (FieldShell `Field.Error`'ı ondan doğuruyor). `invalid`
+    yalnız `error` boşken devreye girer ve mesajsızdır — yalnız kırmızı kenarlık.
+    İkisi de kutuyu geçersiz gösterir; birleşik bayrak ikisini tek yere indirir.
+  */
+  const hasError = error !== undefined && error !== ''
+  const gecersiz = hasError || invalid
+
   return (
     <FieldShell
       {...(label !== undefined && { label })}
@@ -41,11 +51,12 @@ export function Input({
         data-invalid / data-disabled elle veriliyor: Base UI bu işaretleri
         Field.Root üzerine koyuyor, bu kutu ise onun içindeki sıradan bir span —
         yani otomatik devralmıyor. Verilmezse hatalı kutu kırmızı kenarlık,
-        devre dışı kutu gri zemin almıyor.
+        devre dışı kutu gri zemin almıyor. `invalid` de aynı kapıdan geçer:
+        kenarlık `error`'la aynı `&[data-invalid]` kuralından gelir.
       */}
       <span
         className={[control({ size }), className].filter(Boolean).join(' ')}
-        data-invalid={error !== undefined && error !== '' ? '' : undefined}
+        data-invalid={gecersiz ? '' : undefined}
         data-disabled={disabled ? '' : undefined}
       >
         {leadingIcon !== undefined ? (
@@ -54,7 +65,19 @@ export function Input({
           </span>
         ) : null}
 
-        <BaseInput className={input} required={required} disabled={disabled} {...rest} />
+        {/*
+          `aria-invalid` elle veriliyor: `error` doluyken FieldShell'in
+          `Field.Root invalid` bayrağı onu Base UI üzerinden input'a zaten
+          koyuyor, ama `invalid && !error`'da FieldShell geçersizliği bilmez
+          (yalnız `error` geçiyor), dolayısıyla işareti burada veriyoruz.
+        */}
+        <BaseInput
+          className={input}
+          required={required}
+          disabled={disabled}
+          {...(gecersiz && { 'aria-invalid': true })}
+          {...rest}
+        />
 
         {trailingAction !== undefined ? <span className={adornment}>{trailingAction}</span> : null}
       </span>

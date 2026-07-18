@@ -146,17 +146,15 @@ export const badges = style({
 })
 
 /**
- * Ad–değer çiftleri. `<dl>`'nin kendi margin'i ve `<dd>`'nin **40 piksellik**
- * `margin-inline-start`'ı burada sıfırlanıyor: global reset yalnız body'nin
- * margin'ini siliyor, dolayısıyla sıfırlanmasa değerler sağa kayar ve dikey
- * ritmi grid `gap`'i değil tarayıcı belirlerdi (ul/ol'un 40 piksellik
- * `padding-inline-start`'ıyla aynı tuzağın `<dd>` hâli).
+ * Ad–değer çiftlerinin kabı. Bir `<span>` + `display: grid`, `<dl>` değil: kart
+ * `onClick` ile `<button>`'a dönebiliyor ve buton yalnız phrasing content alır
+ * (gerekçe `.tsx`'te, `Bilgi`). Element `<span>` olduğu için `<dl>`/`<dd>`
+ * margin'lerinin reset'ine gerek yok — dikey ritmi tek başına `gap` token'ı
+ * belirliyor, tarayıcı margin'i değil.
  */
 export const facts = style({
   display: 'grid',
   gap: vars.space[1],
-  margin: 0,
-  padding: 0,
 
   '@media': {
     /*
@@ -187,13 +185,11 @@ export const fact = style({
 })
 
 export const factLabel = style({
-  margin: 0,
   fontSize: vars.font.size.sm,
   color: vars.color.text.muted,
 })
 
 export const factValue = style({
-  margin: 0,
   minWidth: 0,
   fontSize: vars.font.size.sm,
   color: vars.color.text.primary,
@@ -216,16 +212,16 @@ export const factValue = style({
 export const sanctionFacts = style([facts, { paddingInlineStart: vars.space[3] }])
 
 /**
- * Yürürlükteki yaptırım bandı.
- *
- * `<p>`'nin kendi margin'i sıfırlanıyor — grid `gap`'inin üstüne binerdi.
- * Renk tek kanal değil: ikon ve cümlenin kendisi de var.
+ * Yürürlükteki yaptırım bandı. Bir `<span>` + `display: flex`, `<p>` değil:
+ * kart `<button>`'a dönebiliyor ve buton yalnız phrasing content alır (gerekçe
+ * `.tsx`'te). Element `<span>` olunca `<p>`'nin grid `gap`'inin üstüne binen
+ * margin'i de düşüyor — sıfırlamaya gerek kalmıyor. Renk tek kanal değil: ikon
+ * ve cümlenin kendisi de var.
  */
 export const sanction = style({
   display: 'flex',
   alignItems: 'center',
   gap: vars.space[2],
-  margin: 0,
   padding: `${vars.space[2]} ${vars.space[3]}`,
   background: vars.color.danger[50],
   border: `1px solid ${vars.color.danger[100]}`,
