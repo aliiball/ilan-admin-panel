@@ -784,14 +784,22 @@ export const SuccessWithEmptySeries: Story = {
         dailyNewListings: [],
         dailyModerationCount: [],
         categoryDistribution: [],
+        /*
+          Onay/red serileri de boşaltılıyor: ayrım grafiği iki seri de gelince
+          çizilir, boş dizilerle "veri yok" der (dört grafik, dört boş durum).
+          Boşaltılmasaydı 30 noktalık ayrım grafiği hâlâ "30 günlük seri" özetini
+          basar ve aşağıdaki yokluk iddiasını yanlışlıkla düşürürdü.
+        */
+        dailyApprovals: [],
+        dailyRejections: [],
       },
     },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
 
-    /* Grafikler "veri yok" diyor — hata değil, boş. */
-    await expect(canvas.getAllByText('Seçilen tarih aralığında veri yok').length).toBe(3)
+    /* Dört grafik de "veri yok" diyor — hata değil, boş. */
+    await expect(canvas.getAllByText('Seçilen tarih aralığında veri yok').length).toBe(4)
     await expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
     await expect(canvas.queryByText(/30 günlük seri/)).not.toBeInTheDocument()
 
@@ -839,5 +847,189 @@ export const DateRangePickerIsWired: Story = {
 
     const secici = canvas.getByRole('button', { name: 'Tarih aralığı' })
     await expect(secici).toHaveTextContent('17.06.2026 – 16.07.2026')
+  },
+}
+
+/* ------------------------------------------------------------------ *
+ * Faz 3 sonrası (b) turunun ek bölümleri — brifing 2.2'nin Faz 3'te
+ * KANALSIZ kalan üç verisi + onay/red ayrımı. Hepsi opsiyonel: verilmezse
+ * bölüm hiç render edilmez (Faz 3 davranışı korunur).
+ * ------------------------------------------------------------------ */
+
+/**
+ * **Onay/red ayrımı** — `dailyApprovals` ve `dailyRejections` birlikte gelince
+ * çizilen dördüncü grafik.
+ *
+ * Faz 3'te `dailyModerationCount` tek ayrışmamış seriydi; ayrım çizilemiyordu.
+ * Şimdi iki ayrı çizgi (onay `success`, red `danger`) bir `ChartCard`'ta.
+ * Ayrışmamış "Günlük moderasyon kararı" grafiği **de** duruyor (Faz 3 korunur):
+ * biri toplamı, öteki ayrımı gösteriyor.
+ */
+export const WithApprovalRejectionSplit: Story = {
+  args: {
+    state: { status: 'success', data: dashboardMetrics },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Ayrım grafiği kendi `ChartCard` bölgesi olarak var. */
+    const bolge = canvas.getByRole('region', { name: 'Onay ve red' })
+    await expect(bolge).toBeInTheDocument()
+
+    /* Erişilebilir özet iki toplamı da metin olarak taşıyor. */
+    await expect(canvas.getByText(/Onay ve red: 30 günlük seri/)).toBeInTheDocument()
+
+    /* Ayrışmamış moderasyon grafiği KORUNDU — ikisi bir arada. */
+    await expect(
+      canvas.getByRole('region', { name: 'Günlük moderasyon kararı' }),
+    ).toBeInTheDocument()
+
+    /* Grafik erişilebilirlik ağacından gizli, özeti değil; `img` rolü sızmıyor. */
+    await expect(within(bolge).queryByRole('img')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * **En uzun bekleyen ilanlar** — `longestWaitingListings` verilince çizilen
+ * bölüm. `compact` + `showModerationMeta` `ListingCard`'lar, en eski gönderim
+ * başta.
+ *
+ * Kartlar **tıklanabilir değil**: `DashboardStatsProps`'ta ilana özel bir
+ * tıklama kanalı yok (RAPOR EDİLDİ). Bölüm başlığı `<h3>`, ekranın `<h2>`
+ * bölümlerinin bir kademe altı.
+ */
+export const WithLongestWaiting: Story = {
+  args: {
+    state: { status: 'success', data: dashboardMetrics },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByRole('heading', { name: 'En uzun bekleyen ilanlar', level: 3 }),
+    ).toBeInTheDocument()
+
+    /* İki `pendingReview` ilan, kart olarak — `<article>` rolüyle sayılıyor. */
+    const kartlar = canvas.getAllByRole('article')
+    await expect(kartlar.length).toBe(2)
+
+    /* En uzun bekleyen (en eski gönderim) başta: villa fixture'ı. */
+    await expect(
+      canvas.getByText("Konyaaltı'nda Havuzlu ve Eşyalı Müstakil Villa"),
+    ).toBeInTheDocument()
+
+    /* Kartlar tıklanamaz: `onClick` kanalı yok, `<button>` üretilmedi. */
+    await expect(canvas.queryByRole('button', { name: /Müstakil Villa/ })).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * **Son moderasyon işlemleri** — `recentModerationEvents` verilince çizilen
+ * bölüm. `ModerationHistory` `table` varyantı: sütunlu, taranabilir okuma.
+ *
+ * `table` seçildi çünkü `DataTable` kendi yatay kaydırma kabını taşıyor ve dar
+ * ekranda sayfayı taşırmadan içeride kaydırıyor.
+ */
+export const WithRecentModerationEvents: Story = {
+  args: {
+    state: { status: 'success', data: dashboardMetrics },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByRole('heading', { name: 'Son moderasyon işlemleri', level: 3 }),
+    ).toBeInTheDocument()
+
+    /* `ModerationHistory` table varyantının sütun başlıkları görünüyor. */
+    await expect(canvas.getByText('Olay')).toBeInTheDocument()
+    await expect(canvas.getByText('Aktör')).toBeInTheDocument()
+    await expect(canvas.getByText('Ayrıntı')).toBeInTheDocument()
+  },
+}
+
+/**
+ * **Moderatör bazında işlem hacmi** — `moderatorVolume` verilince çizilen tablo.
+ *
+ * **Yetki okuması sayfa katmanının:** brifing 2.2 bunu "yalnızca yetkili
+ * rollere" diyor ama `DashboardStatsProps`'ta izin listesi (`availablePermissions`)
+ * yok ve ekran kimin görebileceğini bilemiyor — bu yüzden veri **verildiğinde**
+ * gösteriliyor, gösterip göstermemeye çağıran karar veriyor (RAPOR EDİLDİ).
+ * Bu story o kararı "veri verildi → gösterilir" hâliyle kilitliyor.
+ */
+export const WithModeratorVolume: Story = {
+  args: {
+    state: { status: 'success', data: dashboardMetrics },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByRole('heading', { name: 'Moderatör bazında işlem hacmi', level: 3 }),
+    ).toBeInTheDocument()
+
+    /*
+      Tabloyu benzersiz "Düzeltme" başlığından bulup içine kapsanıyoruz: adlar
+      (Elif Kaya vb.) moderasyon geçmişi tablosunda da geçebilir, sayaçlar ise
+      yalnız bu tabloya özgü. `tr-TR` biçimi: 1.240 (binlik nokta).
+    */
+    const tablo = canvas.getByText('Düzeltme').closest('table')
+    await expect(tablo).not.toBeNull()
+    const tabloIcinde = within(tablo as HTMLTableElement)
+
+    await expect(tabloIcinde.getByText('1.240')).toBeInTheDocument()
+    await expect(tabloIcinde.getByText('1.410')).toBeInTheDocument()
+    await expect(tabloIcinde.getByText('450')).toBeInTheDocument()
+  },
+}
+
+/**
+ * **Verilmeyen opsiyonel bölüm çizilmez** — Faz 3 davranışının korunduğu iddia.
+ *
+ * `partialSuccess` ile beş opsiyonel alan (`longestWaitingListings`,
+ * `recentModerationEvents`, `moderatorVolume`, `dailyApprovals`,
+ * `dailyRejections`) **hiç verilmiyor**; hatası da yok. Sonuç: dört ek bölümün
+ * hiçbiri render edilmiyor, ama temel yedi KPI ve üç grafik yerinde.
+ *
+ * Kontrol grubu: yokluk iddiaları ancak varlığı ölçen story'lerle
+ * (WithLongestWaiting vb.) birlikte anlamlı — `İ`/`i` tuzağının kardeşi, bölüm
+ * dururken de geçen bir yokluk iddiası dişsizdir.
+ */
+export const WithoutOptionalSections: Story = {
+  args: {
+    state: {
+      status: 'partialSuccess',
+      data: metrikleriAyikla(
+        'longestWaitingListings',
+        'recentModerationEvents',
+        'moderatorVolume',
+        'dailyApprovals',
+        'dailyRejections',
+      ),
+      errors: {},
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Dört ek bölümün hiçbiri yok. */
+    await expect(
+      canvas.queryByRole('heading', { name: 'En uzun bekleyen ilanlar' }),
+    ).not.toBeInTheDocument()
+    await expect(
+      canvas.queryByRole('heading', { name: 'Son moderasyon işlemleri' }),
+    ).not.toBeInTheDocument()
+    await expect(
+      canvas.queryByRole('heading', { name: 'Moderatör bazında işlem hacmi' }),
+    ).not.toBeInTheDocument()
+    await expect(canvas.queryByRole('region', { name: 'Onay ve red' })).not.toBeInTheDocument()
+
+    /* Temel içerik yerinde: yedi KPI'dan biri + üç grafik bölgesi. */
+    await expect(canvas.getByText('37')).toBeInTheDocument()
+    await expect(canvas.getByRole('region', { name: 'Günlük yeni ilan' })).toBeInTheDocument()
+    await expect(
+      canvas.getByRole('region', { name: 'Günlük moderasyon kararı' }),
+    ).toBeInTheDocument()
+    await expect(canvas.getByRole('region', { name: 'Kategori dağılımı' })).toBeInTheDocument()
   },
 }

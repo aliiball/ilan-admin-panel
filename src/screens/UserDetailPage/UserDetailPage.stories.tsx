@@ -13,12 +13,15 @@ import {
 import { ADMIN_ROLE_LABEL, USER_STATUS_LABEL } from '../../domain/labels'
 import { formatDateTime } from '../../utils/formatDateTime'
 import {
+  activeSuspensionSanction,
   allAuditLogFixtures,
   allListingFixtures,
   allReportFixtures,
   auditUserSuspendedMert,
   bannedIndividual,
+  mertYildizSanctions,
   moderatorUser,
+  revokedSuspensionMertYildiz,
   suspendedIndividual,
   suspendedUserAuditEntries,
   verifiedRealEstateOffice,
@@ -103,8 +106,31 @@ function paket(user: UserAccount): UserDetailData {
 /** Fixture setinin en yoğun hesabı: altı ilan, altı şikayet (üçü sonuçlanmamış). */
 const OFIS_PAKETI: UserDetailData = paket(verifiedRealEstateOffice)
 
-/** Askıdaki hesap; **audit kaydı olan iki hesaptan biri** (`auditUserSuspendedMert`). */
-const ASKIDAKI_PAKET: UserDetailData = paket(suspendedIndividual)
+/**
+ * Askıdaki hesap; **audit kaydı olan iki hesaptan biri** (`auditUserSuspendedMert`).
+ *
+ * `activeSanction` **dolu** (Faz 3 sonrası (b) turu): Mert'in yürürlükteki askısı
+ * `activeSuspensionSanction` ve `userId` birebir eşleşiyor. Kart bu yüzden
+ * `security`'de gerekçe + tarihleri, `detailed`'da yalnız `endsAt`'i çiziyor.
+ * `sanctions` **konmuyor** — sicil yüzeyi (`SellerPanel`) ikinci bir avatar
+ * basıyor ve `getByText('MY')` gibi tek-eşleşme iddialarını bozardı; sicili
+ * ölçen story'ler `SICIL_PAKET`'i kullanıyor.
+ */
+const ASKIDAKI_PAKET: UserDetailData = {
+  ...paket(suspendedIndividual),
+  activeSanction: activeSuspensionSanction,
+}
+
+/**
+ * Askıdaki hesabın **sicilli** hâli: `sanctions` = `mertYildizSanctions`
+ * (yürürlükteki askı + kaldırılmış eski askı). "Kaldırılmış yaptırım da sicildir"
+ * gerçek fixture'la burada ölçülüyor; `SellerPanel` (`risk`) yalnız tam görünümde
+ * render edildiği için sicil `security` yetkisine kapılı.
+ */
+const SICIL_PAKET: UserDetailData = {
+  ...ASKIDAKI_PAKET,
+  sanctions: mertYildizSanctions,
+}
 
 /** Banlı hesap; audit tarafı `auditUserBannedKemal`. */
 const YASAKLI_PAKET: UserDetailData = paket(bannedIndividual)
@@ -120,6 +146,7 @@ const ADMIN_PAKETI: UserDetailData = paket(moderatorUser)
 
 const OFIS_BASARILI: AsyncState<UserDetailData> = { status: 'success', data: OFIS_PAKETI }
 const ASKIDAKI_BASARILI: AsyncState<UserDetailData> = { status: 'success', data: ASKIDAKI_PAKET }
+const SICIL_BASARILI: AsyncState<UserDetailData> = { status: 'success', data: SICIL_PAKET }
 const YASAKLI_BASARILI: AsyncState<UserDetailData> = { status: 'success', data: YASAKLI_PAKET }
 const ADMIN_BASARILI: AsyncState<UserDetailData> = { status: 'success', data: ADMIN_PAKETI }
 
@@ -198,8 +225,11 @@ const meta = {
           'geçmişi sekmesi **hiç render edilmez** — `auditEntries` pakette olsa bile). Kademeler ' +
           '**kapsayıcıdır**: `superAdmin` hem `UserView`’a hem `UserViewProfile`’a sahip, bu yüzden önce ' +
           '**tamı** sınanır. Eylemler kapılı: `user:suspend`, `user:ban`, `user:assignRole`. Yasaklama ' +
-          'süresizdir ve `ConfirmDialog` ister; askıya alma süreli ve geri alınabilir olduğu için istemez. ' +
-          '**`activeSanction` verilemiyor** — `UserDetailData` `UserSanction` taşımıyor (raporlandı).',
+          'süresizdir ve `danger` bir dialog ister; askıya alma süreli ve geri alınabilir. Her ikisi de ' +
+          'artık gerekçe (+ askıda süre) toplayan bir `SanctionInput` dialog’u açıyor. **`activeSanction` ' +
+          '`UserSummaryCard`’a, `sanctions` sicili `SellerPanel` (`risk`) ile yalnız tam görünüme** geçer — ' +
+          '`UserSanction.reason` `destek`e gösterilmez. Rol değişikliği çakışması `roleChangeError` ile ' +
+          '`danger` bir `Alert`’e dönüşür (`expectedRoleVersion` için damga yok — raporlandı).',
       },
     },
     ai: {
@@ -694,30 +724,55 @@ export const ModeratorCannotAssignRole: Story = {
    ──────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Askıya alma onay istemez: süreli (`endsAt`) ve geri alınabilir (`revokedAt`)
- * bir karar. Yasaklama süresizdir ve ister — farkı `BanAsksForConfirmation`
- * gösteriyor.
+ * Askıya alma artık bir **`SanctionInput` dialog'u** açıyor: gerekçe (zorunlu) ve
+ * süre (varsayılan 7 gün). Faz 3'te eylem alansızdı ve `onSuspend()` doğrudan
+ * çağrılıyordu (RAPOR EDİLMİŞTİ); (b) turunda süre + gerekçe toplanabiliyor.
+ *
+ * Onay butonu gerekçe boşken **kapalı**: iddia önce kapalılığı, sonra gerekçe
+ * yazılınca açıldığını ve `onSuspend`'in yükle çağrıldığını ölçüyor. Süre
+ * dialog açılırken 7'ye kuruluyor, bu yüzden `NumberInput` ile ayrıca uğraşmadan
+ * `durationDays: 7` bekleniyor.
+ *
+ * Play DOM'u **oturmuş bırakıyor** (`popupKapanmasiniBekle`): onaydan sonra
+ * dialog unmount oluyor ama a11y kapısı kapanış yarışına duyarlı.
  */
-export const SuspendIsImmediate: Story = {
+export const SuspendCollectsSanction: Story = {
   args: { state: OFIS_BASARILI },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement)
 
     await userEvent.click(canvas.getByRole('button', { name: /Askıya al/ }))
 
-    await expect(args.onSuspend).toHaveBeenCalledTimes(1)
-    await expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument()
+    const dialog = within(await within(document.body).findByRole('dialog'))
+
+    /* Gerekçe boşken onay kapalı — `SanctionInput.reason` zorunlu. */
+    const onayla = dialog.getByRole('button', { name: /^Askıya al$/ })
+    await expect(onayla).toBeDisabled()
+
+    await userEvent.type(dialog.getByRole('textbox', { name: /Gerekçe/ }), 'Spam davranışı')
+    await expect(onayla).toBeEnabled()
+
+    await userEvent.click(onayla)
+    await expect(args.onSuspend).toHaveBeenCalledWith({
+      reason: 'Spam davranışı',
+      durationDays: 7,
+    })
+
+    await waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument())
+    await popupKapanmasiniBekle()
   },
 }
 
 /**
- * Yasaklama tek tıkla olmaz: önce `ConfirmDialog`.
+ * Yasaklama tek tıkla olmaz: önce gerekçe toplayan bir `danger` `Modal`.
  *
- * Story dialog'u **açık bırakıyor** ve bu güvenli — a11y kapısının ürettiği
- * yarış tam olarak _kapanırken_ bitirmekte (bkz. `popupKapanmasiniBekle`).
+ * `ConfirmDialog` yerine `Modal`: `SanctionInput` toplanıyor ve `ConfirmDialog`'un
+ * gövde slotu yok. Kararın ağırlığı `description` + `danger` onay butonu + zorunlu
+ * gerekçe ile taşınıyor. Story dialog'u **açık bırakıyor** ve bu güvenli — yarış
+ * tam olarak _kapanırken_ bitirmekte (bkz. `popupKapanmasiniBekle`).
  *
- * Arka plan `document.querySelector` ile ölçülüyor, rol sorgusuyla değil: açık
- * Base UI dialog'u sayfanın kalanını `aria-hidden` yapıyor ve
+ * Arka plan `document.querySelector`/`canvasElement` ile ölçülüyor, rol sorgusuyla
+ * değil: açık Base UI dialog'u sayfanın kalanını `aria-hidden` yapıyor ve
  * `within(canvasElement).getByRole(...)` arka plandaki başlığı **bulamaz**
  * (AGENTS'ın ölçülmüş maddesi).
  */
@@ -731,7 +786,8 @@ export const BanAsksForConfirmation: Story = {
     const dialog = await within(document.body).findByRole('dialog')
     await expect(dialog).toHaveTextContent('Hesap süresiz olarak kapatılır')
 
-    /* Onaylanmadan handler çağrılmaz — dialog bir bilgi değil, bir kapı. */
+    /* Gerekçe boşken onay kapalı ve handler çağrılmamış — dialog bir kapı. */
+    await expect(within(dialog).getByRole('button', { name: /^Yasakla$/ })).toBeDisabled()
     await expect(args.onBan).not.toHaveBeenCalled()
 
     /* Arka plan hâlâ DOM'da, yalnız erişilebilirlik ağacından çıkmış durumda. */
@@ -740,12 +796,12 @@ export const BanAsksForConfirmation: Story = {
 }
 
 /**
- * Onaydan sonra `onBan` çalışır ve dialog kapanır.
+ * Gerekçe yazılıp onaylanınca `onBan` yükle çalışır ve dialog kapanır.
  *
- * Play **DOM'u oturmuş bırakıyor**: `popupKapanmasiniBekle` olmadan story
- * yazı-tura düşerdi — kapanma animasyonu sürerken axe çalışırsa Base UI'ın odak
- * korumaları (`aria-hidden="true"` + `tabindex="0"`) `aria-hidden-focus` ihlali
- * üretir. Select'in iki story'si beş koşuda üç kez böyle düşmüştü.
+ * Ban süresiz olduğu için `durationDays` **verilmiyor** — yalnız `reason`. Play
+ * DOM'u **oturmuş bırakıyor**: `popupKapanmasiniBekle` olmadan story yazı-tura
+ * düşerdi — kapanma animasyonu sürerken axe çalışırsa Base UI'ın odak korumaları
+ * (`aria-hidden="true"` + `tabindex="0"`) `aria-hidden-focus` ihlali üretir.
  */
 export const BanConfirmationRunsTheHandler: Story = {
   args: { state: ASKIDAKI_BASARILI },
@@ -755,9 +811,12 @@ export const BanConfirmationRunsTheHandler: Story = {
     await userEvent.click(canvas.getByRole('button', { name: /Yasakla/ }))
 
     const dialog = within(await within(document.body).findByRole('dialog'))
+
+    /* Onay gerekçesiz kapalı; önce gerekçe yazılıyor. */
+    await userEvent.type(dialog.getByRole('textbox', { name: /Gerekçe/ }), 'Tekrarlayan ihlal')
     await userEvent.click(dialog.getByRole('button', { name: /^Yasakla$/ }))
 
-    await expect(args.onBan).toHaveBeenCalledTimes(1)
+    await expect(args.onBan).toHaveBeenCalledWith({ reason: 'Tekrarlayan ihlal' })
 
     await waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument())
     await popupKapanmasiniBekle()
@@ -870,5 +929,136 @@ export const ReportsTab: Story = {
 
     const liste = await canvas.findByRole('list')
     await expect(within(liste).getAllByRole('listitem')).toHaveLength(OFIS_PAKETI.reports.length)
+  },
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Yaptırım sicili — yetki sınırıyla
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Tam görünümde (`security`) yaptırım sicili görünür: yürürlükteki askı **ve**
+ * kaldırılmış eski askı.
+ *
+ * `SICIL_PAKET.sanctions` = `mertYildizSanctions` (Mert artık iki kayıt taşıyor).
+ * "Kaldırılmış yaptırım da sicildir" burada gerçek fixture'la ölçülüyor:
+ * `revokedAt` dolu kayıt "Kaldırıldı" rozetiyle işaretleniyor ama listeden
+ * düşürülmüyor. Sicil `SellerPanel`'in `risk` varyantında; onu bu ekrana koymanın
+ * wart'ı (yanıltıcı "İlan sahibi" landmark'ı, kartla çakışan kimlik) raporlandı.
+ *
+ * Ölçüm kaldırılmış kaydın gerekçesi üzerinden: `activeSuspensionSanction.reason`
+ * hem kartta hem sicilde geçtiği için çift eşleşir, `revokedSuspensionMertYildiz.reason`
+ * ise yalnız sicilde — benzersiz.
+ */
+export const SanctionHistoryOnFullView: Story = {
+  args: { state: SICIL_BASARILI, availablePermissions: SUPER_ADMIN_IZINLERI },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Kontrol: hesap gerçekten çizildi. */
+    await expect(
+      canvas.getByRole('heading', { level: 2, name: /^Mert Yıldız/ }),
+    ).toBeInTheDocument()
+
+    await expect(canvas.getByText('Yaptırım geçmişi')).toBeInTheDocument()
+
+    /* Kaldırılmış kayıt işaretli ama düşürülmemiş: hem rozet hem gerekçesi görünür. */
+    await expect(canvas.getByText('Kaldırıldı')).toBeInTheDocument()
+    await expect(canvas.getByText(revokedSuspensionMertYildiz.reason)).toBeInTheDocument()
+  },
+}
+
+/**
+ * ⚠ Destek sicili **görmez** — `UserSanction.reason` iç gerekçe metnidir.
+ *
+ * `SICIL_PAKET` sicili taşısa da `destek` (`UserViewProfile`) tam görünüme sahip
+ * değil: `SellerPanel` hiç render edilmiyor ve kart `detailed` olduğu için aktif
+ * yaptırımın **gerekçesini** de çizmiyor (yalnız tip + `endsAt`). İki gerekçe de
+ * DOM'da yok. Kontrol grubu `SanctionHistoryOnFullView`: aynı veri, tam görünümde
+ * ikisi de görünür.
+ */
+export const SupportViewHidesSanctionHistory: Story = {
+  args: { state: SICIL_BASARILI, availablePermissions: DESTEK_IZINLERI },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Kontrol: hesap çizildi ve destek'in görebildiği durum yerinde. */
+    await expect(
+      canvas.getByRole('heading', { level: 2, name: /^Mert Yıldız/ }),
+    ).toBeInTheDocument()
+    await expect(canvas.getByText(ASKI_DURUM_METNI)).toBeInTheDocument()
+
+    await expect(canvas.queryByText('Yaptırım geçmişi')).not.toBeInTheDocument()
+    await expect(canvas.queryByText(revokedSuspensionMertYildiz.reason)).not.toBeInTheDocument()
+    /* Aktif yaptırımın gerekçesi de gizli: `detailed` yalnız tip + `endsAt` çizer. */
+    await expect(canvas.queryByText(activeSuspensionSanction.reason)).not.toBeInTheDocument()
+  },
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Rol değişikliği çakışması ve sayfalama
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Rol değişikliği reddedildi (`roleChangeConflict`, brifing 2.6): rol kutusunun
+ * altında `danger` bir `Alert`.
+ *
+ * `expectedRoleVersion` gönderilmiyor (damga yok — raporlandı), ama çakışma
+ * sunucudan `roleChangeError` olarak dönebiliyor ve ekran onu gösteriyor. Sayfada
+ * bayat uyarısı olmadığı için tek `alert` bu — `getByRole('alert')` benzersiz.
+ */
+export const RoleChangeConflict: Story = {
+  args: {
+    state: ADMIN_BASARILI,
+    availablePermissions: SUPER_ADMIN_IZINLERI,
+    roleChangeError: {
+      title: 'Rol değişikliği uygulanamadı',
+      message:
+        'Bu hesabın rolü başka bir yönetici tarafından değiştirildi. Sayfayı yenileyip tekrar deneyin.',
+      code: 'ROLE_VERSION_CONFLICT',
+      retryable: false,
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Kontrol: rol kutusu gerçekten çizildi (yalnız superAdmin). */
+    await expect(canvas.getByRole('combobox', { name: /Admin rolü/ })).toBeInTheDocument()
+
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Rol değişikliği uygulanamadı')
+    /* Çakışmada tekrar deneme yok: aynı damga aynı çakışmayı üretir. */
+    await expect(canvas.queryByRole('button', { name: /Tekrar dene/ })).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * İlanlar sekmesi sayfalanabiliyor (Faz 3'te `onListingsPageChange` yoktu →
+ * ikinci sayfa istenemiyordu; RAPOR EDİLMİŞTİ).
+ *
+ * `Pagination` yalnız kanal bağlıysa render ediliyor. Bir sonraki sayfa 1-tabanlı
+ * bildiriliyor; yeni sayfayı çekmek çağıranın işi (ekran veri çekmez).
+ */
+export const ListingsPagination: Story = {
+  args: {
+    state: {
+      status: 'success',
+      data: {
+        ...OFIS_PAKETI,
+        listings: {
+          items: hesabinIlanlari(verifiedRealEstateOffice),
+          page: 1,
+          pageSize: 6,
+          totalItems: 18,
+          totalPages: 3,
+        },
+      },
+    },
+    onListingsPageChange: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Sayfa 2' }))
+    await expect(args.onListingsPageChange).toHaveBeenCalledWith(2)
   },
 }

@@ -19,8 +19,9 @@ import { Avatar } from '../../components/primitives/Avatar'
 import { Badge } from '../../components/primitives/Badge'
 import { Button } from '../../components/primitives/Button'
 import { Modal } from '../../components/primitives/Modal'
+import { NumberInput } from '../../components/primitives/NumberInput'
 import { Select } from '../../components/primitives/Select'
-import { ConfirmDialog } from '../../components/composites/ConfirmDialog'
+import { Textarea } from '../../components/primitives/Textarea'
 import { DataTable } from '../../components/composites/DataTable'
 import { EmptyState } from '../../components/composites/EmptyState'
 import { ErrorState } from '../../components/composites/ErrorState'
@@ -31,6 +32,7 @@ import type {
   DataTableProps,
   FilterDefinition,
   FilterValue,
+  SanctionInput,
   SelectOption,
   UserFilterValues,
   UserManagementPageProps,
@@ -299,8 +301,20 @@ interface SutunSecenekleri {
   askiyaAlinabilir: boolean
   banlanabilir: boolean
   rolAtanabilir: boolean
+  /**
+   * Sıralama kanalı bağlı mı? `onSortChange` verilmemişse hiçbir başlık
+   * `sortable` işaretlenmez — basınca hiçbir şey yapmayan bir başlık düğmesi
+   * üretmek (`ColumnDef.sortable`'ın JSDoc'unun yasakladığı "ölü buton") tam da
+   * bu kapının önlediği şey.
+   */
+  siralanabilir: boolean
+  /**
+   * Rol değişikliği reddedildiyse (`roleChangeConflict`), uyarı eşleşen satırın
+   * eylem hücresinde gösterilir. `userId` hangi satırın düştüğünü söyler.
+   */
+  roleChangeError: UserManagementPageProps['roleChangeError']
   onUserOpen: (user: UserAccount) => void
-  onSuspend: (user: UserAccount) => void
+  onSuspendIste: (user: UserAccount) => void
   onBanIste: (user: UserAccount) => void
   onRolIste: (user: UserAccount) => void
 }
@@ -338,8 +352,10 @@ function sutunlariKur({
   askiyaAlinabilir,
   banlanabilir,
   rolAtanabilir,
+  siralanabilir,
+  roleChangeError,
   onUserOpen,
-  onSuspend,
+  onSuspendIste,
   onBanIste,
   onRolIste,
 }: SutunSecenekleri): KullaniciSutunu[] {
@@ -351,6 +367,7 @@ function sutunlariKur({
       header: 'Kullanıcı',
       cardSlot: 'identity',
       width: '18rem',
+      sortable: siralanabilir,
       cell: (row) => (
         <button type="button" className={css.userButton} onClick={() => onUserOpen(row)}>
           {/*
@@ -461,6 +478,7 @@ function sutunlariKur({
       header: 'İlan',
       cardSlot: 'field',
       align: 'end',
+      sortable: siralanabilir,
       cell: (row) => (
         <span className={css.numeric}>
           {row.listingCount.toLocaleString('tr-TR')} ilan ·{' '}
@@ -473,6 +491,7 @@ function sutunlariKur({
       header: 'Şikayet',
       cardSlot: 'field',
       align: 'end',
+      sortable: siralanabilir,
       cell: (row) =>
         row.reportCount > 0 ? (
           <Badge tone="danger" variant="soft" size="sm" leadingIcon={<Flag size={12} />}>
@@ -495,6 +514,7 @@ function sutunlariKur({
       id: 'lastLogin',
       header: 'Son giriş',
       cardSlot: 'field',
+      sortable: siralanabilir,
       cell: (row) =>
         row.lastLoginAt !== undefined ? (
           <time dateTime={machineDateTime(row.lastLoginAt)}>{formatDateTime(row.lastLoginAt)}</time>
@@ -513,6 +533,7 @@ function sutunlariKur({
     id: 'createdAt',
     header: 'Kayıt tarihi',
     cardSlot: 'field',
+    sortable: siralanabilir,
     cell: (row) => (
       <time dateTime={machineDateTime(row.createdAt)}>{formatDate(row.createdAt)}</time>
     ),
@@ -530,8 +551,9 @@ function sutunlariKur({
       header: 'Eylemler',
       cardSlot: 'actions',
       cell: (row) => (
-        <span className={css.actions}>
-          {/*
+        <span className={css.actionsCell}>
+          <span className={css.actions}>
+            {/*
             İkinci kapı durumun kendisi: askıdaki hesabı tekrar askıya almak,
             banlı hesabı tekrar banlamak bir şey yapmaz. `domain/moderationActions.ts`
             ilan tarafında aynı ikiliyi (yetki + durum) kuruyor; `UserStatus` için
@@ -546,39 +568,62 @@ function sutunlariKur({
             **başında** duruyor (WCAG 2.5.3 "Label in Name": erişilebilir ad,
             görünen etiketi birebir içermeli).
           */}
-          {askiyaAlinabilir &&
-          row.status !== UserStatus.Suspended &&
-          row.status !== UserStatus.Banned ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              aria-label={`Askıya al: ${row.fullName}`}
-              onClick={() => onSuspend(row)}
-            >
-              Askıya al
-            </Button>
-          ) : null}
+            {askiyaAlinabilir &&
+            row.status !== UserStatus.Suspended &&
+            row.status !== UserStatus.Banned ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label={`Askıya al: ${row.fullName}`}
+                onClick={() => onSuspendIste(row)}
+              >
+                Askıya al
+              </Button>
+            ) : null}
 
-          {banlanabilir && row.status !== UserStatus.Banned ? (
-            <Button
-              variant="danger"
-              size="sm"
-              aria-label={`Banla: ${row.fullName}`}
-              onClick={() => onBanIste(row)}
-            >
-              Banla
-            </Button>
-          ) : null}
+            {banlanabilir && row.status !== UserStatus.Banned ? (
+              <Button
+                variant="danger"
+                size="sm"
+                aria-label={`Banla: ${row.fullName}`}
+                onClick={() => onBanIste(row)}
+              >
+                Banla
+              </Button>
+            ) : null}
 
-          {rolAtanabilir ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Rol ata: ${row.fullName}`}
-              onClick={() => onRolIste(row)}
-            >
-              Rol ata
-            </Button>
+            {rolAtanabilir ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Rol ata: ${row.fullName}`}
+                onClick={() => onRolIste(row)}
+              >
+                Rol ata
+              </Button>
+            ) : null}
+          </span>
+
+          {/*
+          ── Rol değişikliği çakışması (`roleChangeConflict`, brifing 2.6) ──
+          Damga (`expectedRoleVersion`) uyuşmadığında sunucu kararı reddediyor ve
+          sebebi `roleChangeError` ile geri geliyor. Uyarı **eşleşen satırın**
+          eylem hücresinde: rol atama yalnız `superAdmin`'in işi, yani bu hücre
+          zaten yalnız o rolde var. `ModerationActionBar.decisionError` ile aynı
+          kalıp — reddin tekrar dene butonu **yok**: aynı damga aynı çakışmayı
+          üretir, doğru eylem yeniden yükleyip bakmak (o da sayfanın işi). Rol
+          atama dialog'u onayla kapandığı için uyarının yeri dialog değil, satır.
+
+          Kart görünümü de bu hücreyi (`eylemler.cell`) yeniden kullandığından
+          uyarı orada da çıkar; yetki kapısı tek yerde kalır.
+        */}
+          {roleChangeError !== undefined && roleChangeError.userId === row.id ? (
+            <Alert
+              tone="danger"
+              variant="soft"
+              title={roleChangeError.error.title}
+              description={roleChangeError.error.message}
+            />
           ) : null}
         </span>
       ),
@@ -623,6 +668,112 @@ function KullaniciKarti({ row, sutunlar }: { row: UserAccount; sutunlar: Kullani
   )
 }
 
+/* ── Yaptırım dialog'u ───────────────────────────────────────────────────── */
+
+/**
+ * Askıya alma / banlama dialog'u: gerekçe (askıda ayrıca süre) toplar.
+ *
+ * `ConfirmDialog` **kullanılamıyor** — sözleşmesinde gövde slotu yok ve yaptırım
+ * artık alan topluyor (`ModerationActionBar`'ın karar dialog'uyla aynı gerekçe).
+ * `Modal` + `Textarea` (+ askıda `NumberInput`) doğru araç.
+ *
+ * İki kapı: **gerekçe her zaman zorunlu** (`SanctionInput.reason` — gerekçesiz
+ * yaptırım denetlenemez) ve **askıda süre zorunlu** (`durationDays` — süresiz askı
+ * kavramsal olarak bandır, ban süresizdir ve `durationDays` almaz). Onay butonu
+ * ikisi de geçerli olana kadar `disabled`.
+ *
+ * Askı süresi **7 günle başlıyor**: makul, düzenlenebilir bir varsayılan
+ * (moderatör değiştirebilir), böylece form gerekçe girilir girilmez geçerli olur.
+ * `new Date()` yok — süre gün cinsinden bir sayı, bitiş tarihini sunucu hesaplar.
+ */
+function YaptirimDialog({
+  user,
+  tur,
+  onCancel,
+  onConfirm,
+}: {
+  user: UserAccount
+  tur: 'suspend' | 'ban'
+  onCancel: () => void
+  onConfirm: (input: SanctionInput) => void
+}) {
+  const askiya = tur === 'suspend'
+  const [gerekce, setGerekce] = useState('')
+  const [sure, setSure] = useState<number | undefined>(askiya ? 7 : undefined)
+
+  const gerekceTemiz = gerekce.trim()
+  const gecerli = gerekceTemiz !== '' && (!askiya || (sure !== undefined && sure > 0))
+
+  const gonder = () => {
+    if (!gecerli) return
+    /*
+      Koşullu spread: `durationDays` yalnız askıda konur. `exactOptionalPropertyTypes`
+      açıkken `durationDays: undefined` yazmak TS2375 verir; ban'de alan **hiç
+      olmamalı** (süresiz), boş değil.
+    */
+    onConfirm({
+      reason: gerekceTemiz,
+      ...(askiya && sure !== undefined && { durationDays: sure }),
+    })
+  }
+
+  return (
+    <Modal
+      open
+      size="sm"
+      title={askiya ? `${user.fullName} hesabını askıya al` : `${user.fullName} hesabını banla`}
+      description={
+        askiya
+          ? 'Hesap seçilen süre boyunca askıya alınır; kullanıcı giriş yapamaz ve ilanları yayından kalkar. Süre dolduğunda askı kendiliğinden kalkar.'
+          : 'Hesap kalıcı olarak engellenir, kullanıcı giriş yapamaz ve ilanları yayından kalkar. Bu işlem bu ekrandan geri alınamaz.'
+      }
+      onOpenChange={(acik) => {
+        if (!acik) onCancel()
+      }}
+      footer={
+        <div className={css.actions}>
+          <Button variant="secondary" onClick={onCancel}>
+            Vazgeç
+          </Button>
+          <Button variant="danger" disabled={!gecerli} onClick={gonder}>
+            {askiya ? 'Askıya al' : 'Banla'}
+          </Button>
+        </div>
+      }
+    >
+      <div className={css.sanctionBody}>
+        {askiya ? (
+          <NumberInput
+            label="Askı süresi (gün)"
+            value={sure}
+            min={1}
+            step={1}
+            required
+            helperText="Süre dolduğunda askı kendiliğinden kalkar."
+            onValueChange={(deger) => setSure(deger)}
+          />
+        ) : null}
+        {/*
+          Gerekçe `UserSanction.reason` olur: iç kayıt metni, kullanıcıya
+          gösterilmez (`UserViewProfile` bunu `destek`e bile açmıyor). Base UI
+          handler'ı sarmalanmadan geçirilmez; `Textarea` native `<textarea>`
+          olduğu için `onChange` doğru araç (`onValueChange` değil).
+        */}
+        <Textarea
+          label="Gerekçe"
+          value={gerekce}
+          rows={3}
+          required
+          maxLength={500}
+          showCharacterCount
+          helperText="İç kayda geçer; kullanıcıya gösterilmez."
+          onChange={(event) => setGerekce(event.target.value)}
+        />
+      </div>
+    </Modal>
+  )
+}
+
 /* ── Ekran ───────────────────────────────────────────────────────────────── */
 
 /**
@@ -656,9 +807,10 @@ function KullaniciKarti({ row, sutunlar }: { row: UserAccount; sutunlar: Kullani
  *
  * ## Düzen
  *
- * Dolu liste iki kez çiziliyor (tablo + kart) ve seçimi CSS yapıyor:
- * `DataTable.mobileMode` medya sorgusu değil, düz bir prop. Her viewport'ta
- * yalnız biri erişilebilirlik ağacında — gerekçe ve maliyet `.css.ts`'te.
+ * Dolu liste tek `DataTable` ile çiziliyor: `mobileMode="cards"` artık viewport'a
+ * kendisi bakıyor (48rem'in altında kart, üstünde tablo) ve iki dalı da DOM'da
+ * tutup birini medya sorgusuyla boyuyor. Her viewport'ta yalnız biri
+ * erişilebilirlik ağacında; eski `tableView`/`cardView` çift-render telafisi kalktı.
  *
  * @example
  * <UserManagementPage
@@ -681,17 +833,23 @@ export function UserManagementPage({
   onFiltersChange,
   onPageChange,
   onUserOpen,
+  onSortChange,
+  sort,
   onSuspend,
   onBan,
   onRoleChange,
+  roleChangeError,
   onRetry,
 }: UserManagementPageProps) {
   /*
-    Onay bekleyen kullanıcı; dialog'un açıklığı da bu state'ten türüyor. Ban
-    geri döndürülemez, bu yüzden butona basmak doğrudan `onBan`'i çağırmıyor:
-    önce onay.
+    Açık yaptırım dialog'unun adayı ve türü. Askıya alma ve banlama artık gerekçe
+    (askıda ayrıca süre) topluyor — brifing 2.6 yaptırıma süre/gerekçe iliştirmeyi
+    şart koşuyor (Faz 3'te alansızdı, RAPOR EDİLMİŞTİ). İkisi de geri döndürülemez
+    yan etkiler, bu yüzden butona basmak handler'ı doğrudan çağırmıyor: önce form.
   */
-  const [banAdayi, setBanAdayi] = useState<UserAccount | undefined>(undefined)
+  const [yaptirim, setYaptirim] = useState<
+    { user: UserAccount; tur: 'suspend' | 'ban' } | undefined
+  >(undefined)
   const [rolAdayi, setRolAdayi] = useState<UserAccount | undefined>(undefined)
   const [secilenRol, setSecilenRol] = useState<string | undefined>(undefined)
 
@@ -755,9 +913,12 @@ export function UserManagementPage({
     askiyaAlinabilir,
     banlanabilir,
     rolAtanabilir,
+    /* `onSortChange` bağlı değilse hiçbir başlık `sortable` olmaz — ölü buton yok. */
+    siralanabilir: onSortChange !== undefined,
+    roleChangeError,
     onUserOpen,
-    onSuspend,
-    onBanIste: (user) => setBanAdayi(user),
+    onSuspendIste: (user) => setYaptirim({ user, tur: 'suspend' }),
+    onBanIste: (user) => setYaptirim({ user, tur: 'ban' }),
     onRolIste: (user) => {
       setSecilenRol(user.adminRole)
       setRolAdayi(user)
@@ -836,6 +997,15 @@ export function UserManagementPage({
     loading: yukleniyor,
     ...(hata !== undefined && { error: hata }),
     ...(hata?.retryable === true && { onRetry }),
+    /*
+      Sıralama iki uçlu tek bir kanal: `sort` görünümü (hangi kolon, hangi yön),
+      `onSortChange` niyeti taşır. Tablo veriyi **sıralamaz** — sıralı `rows`'u
+      geri bekler; sıralamayı yapan sayfa katmanıdır. İkisi de opsiyonel ve
+      koşullu geçiliyor: `exactOptionalPropertyTypes` açıkken doğrudan `undefined`
+      atamak TS2375. Faz 3'te bu kanal yoktu → hiçbir kolon `sortable` değildi.
+    */
+    ...(sort !== undefined && { sort }),
+    ...(onSortChange !== undefined && { onSortChange }),
   }
 
   return (
@@ -885,19 +1055,19 @@ export function UserManagementPage({
         */
         <DataTable<UserAccount> {...ortakTablo} rows={[]} mobileMode="scroll" />
       ) : (
-        <>
-          <div className={css.tableView} data-view="table">
-            <DataTable<UserAccount> {...ortakTablo} rows={satirlar} mobileMode="scroll" />
-          </div>
-          <div className={css.cardView} data-view="cards">
-            <DataTable<UserAccount>
-              {...ortakTablo}
-              rows={satirlar}
-              mobileMode="cards"
-              renderMobileCard={(row) => <KullaniciKarti row={row} sutunlar={sutunlar} />}
-            />
-          </div>
-        </>
+        /*
+          Tek DataTable, çift değil: `mobileMode="cards"` artık viewport'a kendisi
+          bakıyor (48rem'in altında kart, üstünde tablo) ve iki dalı da DOM'da
+          tutup birini medya sorgusuyla boyuyor. Eski `tableView`/`cardView`
+          çift-render telafisi bu yüzden kalktı; her viewport'ta yalnız bir dal
+          erişilebilirlik ağacında.
+        */
+        <DataTable<UserAccount>
+          {...ortakTablo}
+          rows={satirlar}
+          mobileMode="cards"
+          renderMobileCard={(row) => <KullaniciKarti row={row} sutunlar={sutunlar} />}
+        />
       )}
 
       {sayfalama !== undefined ? (
@@ -916,18 +1086,16 @@ export function UserManagementPage({
         Kapanış = unmount, yani portal ve Base UI'ın odak koruma span'leri
         (`data-base-ui-focus-guard`) beraber gidiyor.
       */}
-      {banAdayi !== undefined ? (
-        <ConfirmDialog
-          open
-          tone="danger"
-          title={`${banAdayi.fullName} hesabını banla`}
-          description="Hesap kalıcı olarak engellenir, kullanıcı giriş yapamaz ve ilanları yayından kalkar. Bu işlem bu ekrandan geri alınamaz."
-          confirmLabel="Banla"
-          onConfirm={() => {
-            onBan(banAdayi)
-            setBanAdayi(undefined)
+      {yaptirim !== undefined ? (
+        <YaptirimDialog
+          user={yaptirim.user}
+          tur={yaptirim.tur}
+          onCancel={() => setYaptirim(undefined)}
+          onConfirm={(input) => {
+            if (yaptirim.tur === 'suspend') onSuspend(yaptirim.user, input)
+            else onBan(yaptirim.user, input)
+            setYaptirim(undefined)
           }}
-          onCancel={() => setBanAdayi(undefined)}
         />
       ) : null}
 
@@ -953,6 +1121,16 @@ export function UserManagementPage({
                 disabled={secilenRol === undefined || secilenRol === rolAdayi.adminRole}
                 onClick={() => {
                   if (secilenRol !== undefined && adminRoleMi(secilenRol)) {
+                    /*
+                      `expectedRoleVersion` **gönderilemiyor**: iyimser kilit bir
+                      sürüm damgası ister ama `UserAccount` böyle bir alan taşımıyor
+                      (`revision`'ın kullanıcı karşılığı yok — RAPOR EDİLDİ). Damga
+                      uydurmak (ör. `updatedAt`'i sayıya çevirmek) çakışma
+                      algılamasını sessizce bozardı. Argüman opsiyonel olduğu için
+                      atlamak geriye dönük uyumlu; çakışma sunucu tarafında hâlâ
+                      algılanabilir ve sonucu `roleChangeError` ile geri gelir —
+                      ekranın gösterdiği yarı budur.
+                    */
                     onRoleChange(rolAdayi, secilenRol)
                   }
                   setRolAdayi(undefined)

@@ -1,20 +1,6 @@
 import { style } from '@vanilla-extract/css'
 import { vars } from '@/tokens/contract.css'
 
-/**
- * Kuyruk kartlarından tabloya geçiş noktası.
- *
- * `48rem` reponun yerleşik kırılımı (AppShell'in menü kolonu, TopBar, FilterBar
- * ve ImageGallery aynı sayıyı kullanıyor) — ekran kendi kırılımını uydurmuyor.
- *
- * **Container query değil, medya sorgusu:** repoda container query yok ve bu
- * yüzden "mobilde kart, masaüstünde tablo" iddiası play ile ölçülemez (bkz.
- * AGENTS.md, "Medya sorgusu viewport'a bağlıdır, kabın genişliğine değil").
- * Ölçen şey ekran görüntüsü; play yalnız 320 pikselde yatay taşma olmadığını
- * ölçebilir.
- */
-const MASAUSTU = 'screen and (min-width: 48rem)'
-
 export const page = style({
   display: 'grid',
   gap: vars.space[5],
@@ -80,43 +66,6 @@ export const summaryItem = style({
 })
 
 /**
- * Mobil kuyruk kartları — 48rem'in altında.
- *
- * `DataTable`'ın `mobileMode="cards"` kanalı **kullanılmıyor**: prop'un JSDoc'u
- * "dar ekranda ne olacağı" diyor ama uygulaması viewport'a hiç bakmıyor
- * (`DataTable.tsx`: `if (mobileMode === 'cards' && renderMobileCard !== undefined)`
- * koşulsuz kartlara dönüyor). Yani o kanal "dar ekranda kart" değil "her zaman
- * kart" demek; düzen geçişini yapan taraf ekran olmak zorunda.
- */
-export const mobileQueue = style({
-  display: 'grid',
-  gap: vars.space[3],
-  minWidth: 0,
-
-  '@media': {
-    [MASAUSTU]: { display: 'none' },
-  },
-})
-
-/**
- * Masaüstü tablosu — 48rem ve üstü.
- *
- * Gizlemek için `display: none` **doğru araç**: kart listesiyle tablo aynı
- * şikayetleri gösteriyor ve ikisinin aynı anda erişilebilirlik ağacında olması
- * ekran okuyucu kullanıcısına her satırı iki kez okuturdu. `display: contents`
- * (AGENTS.md'nin kabuk slot'u reçetesi) burada yanlış olurdu: o kutuyu siler,
- * çocuğu bırakır — yani tabloyu mobilde ekranda tutardı.
- */
-export const desktopTable = style({
-  display: 'none',
-  minWidth: 0,
-
-  '@media': {
-    [MASAUSTU]: { display: 'block' },
-  },
-})
-
-/**
  * Şikayeti açan buton: tablo satırının klavye kapısı.
  *
  * `DataTableProps.onRowClick` **bilerek kullanılmıyor** — `<tr onClick>` yalnız
@@ -144,6 +93,49 @@ export const identifier = style({
   fontFamily: vars.font.family.mono,
   fontSize: vars.font.size.sm,
   color: vars.color.text.secondary,
+  overflowWrap: 'anywhere',
+})
+
+/**
+ * Çözülmüş kişi adı (şikayetçi / atanan admin).
+ *
+ * `identifier`'dan ayrı: ad bir insan adıdır, kimlik değil — monospace değil,
+ * `text.primary`. `anywhere` şart çünkü firma adları uzun olabiliyor
+ * ("Yapı Proje Gayrimenkul") ve dar sütunda hücreyi taşırmamalı.
+ */
+export const person = style({
+  color: vars.color.text.primary,
+  overflowWrap: 'anywhere',
+})
+
+/**
+ * İlan özeti hücresi: başlık, ilan no ve durum rozeti dikey diziliyor.
+ *
+ * `minWidth: 0` grid/flex öğesinin `min-content` tabanını sıfırlıyor ki uzun
+ * başlık hücreyi değil sütunu genişletmesin (sayfa `page`'in `minWidth: 0`'ıyla
+ * aynı aile) — kaydırmayı DataTable'ın kendi scroller'ı taşıyor.
+ */
+export const listingCell = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: vars.space[1],
+  alignItems: 'start',
+  minWidth: 0,
+  maxWidth: '22rem',
+})
+
+/** İlan başlığı; sarabilir, kırpılmaz — "İlan özeti" yarım okunmamalı. */
+export const listingTitle = style({
+  fontWeight: vars.font.weight.medium,
+  color: vars.color.text.primary,
+  overflowWrap: 'anywhere',
+})
+
+/** İlan numarası: teknik tanımlayıcı, monospace ve sönük. */
+export const listingNo = style({
+  fontFamily: vars.font.family.mono,
+  fontSize: vars.font.size.sm,
+  color: vars.color.text.muted,
   overflowWrap: 'anywhere',
 })
 

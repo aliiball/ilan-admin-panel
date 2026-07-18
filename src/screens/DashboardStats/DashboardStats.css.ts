@@ -72,6 +72,29 @@ export const sectionTitle = style({
 })
 
 /**
+ * Faz 3 sonrası (b) turunun ek bölüm başlığı (`<h3>`).
+ *
+ * `sectionTitle`in (`<h2>`) bir kademe altı: `lg` boy, semibold. `margin: 0`
+ * yine şart — global reset yalnız `body`ye dokunuyor, `<h*>` tarayıcı
+ * varsayılan margin'ini grid `gap`inin üstüne bindirirdi.
+ */
+export const subsectionTitle = style({
+  margin: 0,
+  color: vars.color.text.primary,
+  fontSize: vars.font.size.lg,
+  fontWeight: vars.font.weight.semibold,
+  lineHeight: vars.lineHeight.heading,
+})
+
+/** Bölüm başlığının altındaki açıklama. `<p>` margin'i sıfırlanıyor (reset tuzağı). */
+export const subsectionDescription = style({
+  margin: 0,
+  color: vars.color.text.muted,
+  fontSize: vars.font.size.sm,
+  lineHeight: vars.lineHeight.body,
+})
+
+/**
  * KPI ızgarası. **Medya sorgusu yok, `auto-fit` var.**
  *
  * Kırılım noktası uydurmak yerine kartın kendi taban genişliği (14rem) sütun
@@ -186,6 +209,91 @@ export const chartSurface = style({
  * `margin: -1px` kırpma tekniğinin parçası ve `<p>`nin tarayıcı margin'ini de
  * bu arada eziyor.
  */
+/**
+ * "En uzun bekleyen ilanlar" listesi — semantik `<ul>`.
+ *
+ * Reset üçlüsü şart: global reset yalnız `body`ye dokunuyor, `<ul>` ayrıca 40
+ * piksel `padding-inline-start` taşır ve liste sağa kayardı (`listStyle` +
+ * `margin: 0` + `padding: 0` üçü birden). `minWidth: 0` grid çocuğunun
+ * `min-width: auto` varsayılanını kırıyor.
+ */
+export const listingList = style({
+  display: 'grid',
+  gap: vars.space[3],
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+  minWidth: 0,
+})
+
+export const listingItem = style({
+  minWidth: 0,
+})
+
+/**
+ * Moderatör hacmi tablosunun kaydırma kabı.
+ *
+ * `overflowX: 'auto'` + `minWidth: 0`: dar ekranda dört sütunlu tablo kabı
+ * taşırmak yerine **içeride** kaydırılır — kaydırma kabı olan bir grid öğesinin
+ * otomatik minimum boyutu zaten sıfır, `minWidth: 0` bunu açıkça sabitliyor.
+ * `tabIndex={0}` component'te veriliyor (axe `scrollable-region-focusable`).
+ */
+export const tableScroller = style({
+  minWidth: 0,
+  overflowX: 'auto',
+})
+
+/**
+ * Moderatör hacmi tablosu.
+ *
+ * Yapışkan sütun **yok**, bu yüzden `borderCollapse: 'collapse'` güvenli
+ * (AGENTS'ın uyardığı "collapse + sticky" çakışması burada oluşmuyor).
+ * `width: '100%'` geniş ekranda kabı doldurur; dar ekranda içerik daha genişse
+ * kap kaydırır.
+ */
+export const volumeTable = style({
+  width: '100%',
+  borderCollapse: 'collapse',
+  fontSize: vars.font.size.sm,
+})
+
+/** Başlık satırının hücreleri (`<th scope="col">`). */
+const volumeHeadBase = style({
+  paddingBlock: vars.space[2],
+  paddingInline: vars.space[3],
+  borderBlockEnd: `1px solid ${vars.color.border.default}`,
+  color: vars.color.text.secondary,
+  fontWeight: vars.font.weight.semibold,
+  whiteSpace: 'nowrap',
+})
+
+export const volumeColHead = style([volumeHeadBase, { textAlign: 'start' }])
+
+/** Sayısal sütun başlığı: sağa yaslı, hücrelerle hizalı. */
+export const volumeNumHead = style([volumeHeadBase, { textAlign: 'end' }])
+
+/** Satır başlığı: moderatörün adı (`<th scope="row">`). */
+export const volumeRowHead = style({
+  paddingBlock: vars.space[2],
+  paddingInline: vars.space[3],
+  borderBlockEnd: `1px solid ${vars.color.border.subtle}`,
+  color: vars.color.text.primary,
+  fontWeight: vars.font.weight.medium,
+  textAlign: 'start',
+  whiteSpace: 'nowrap',
+})
+
+/** Sayısal hücre: sağa yaslı, tablo rakamı (hizalı sütun). */
+export const volumeNumCell = style({
+  paddingBlock: vars.space[2],
+  paddingInline: vars.space[3],
+  borderBlockEnd: `1px solid ${vars.color.border.subtle}`,
+  color: vars.color.text.primary,
+  textAlign: 'end',
+  fontVariantNumeric: 'tabular-nums',
+  whiteSpace: 'nowrap',
+})
+
 export const visuallyHidden = style({
   position: 'absolute',
   width: '1px',

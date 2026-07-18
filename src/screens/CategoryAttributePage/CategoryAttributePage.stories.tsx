@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
 import {
+  AdminPermission,
   AttributeDataType,
   BuildingSubCategory,
   CommercialSubCategory,
@@ -20,14 +21,28 @@ import type { CategoryAttributePageData, CategoryTreeNode } from '../../types/co
 import { CategoryAttributePage } from './CategoryAttributePage'
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Fixture — story-yerel
+   Fixture — story-yerel (neden hâlâ story-yerel: RAPOR EDİLDİ)
 
-   `src/fixtures/` altında kategori ağacı ve öznitelik fixture'ı **yok** (orada
-   listings, moderationEvents, users, reports, dashboard, audit var); bu ekran
-   ikisini birden istiyor. CategoryTree ve AttributeEditor aynı boşluğu
-   story-yerel fixture ile kapatmıştı, buradaki veriler onlarınkiyle birebir
-   aynı: aynı ağaç iki story dosyasında iki farklı sayı göstermemeli. Kalıcı
-   çözüm `src/fixtures/categories.ts` — raporlandı, bu ekranın yetkisi dışında.
+   `src/fixtures/categories.ts` artık **var** (`categoryTreeFixture`,
+   `residentialAttributes`, `categoryAttributesByNodeId`, `emptyCategoryTreeFixture`)
+   ve bu ekranın tercih edeceği kaynak o. Ama bu dosyanın story-yerel verisi
+   şimdilik kaldırılamadı, iki somut sebeple:
+
+   1. **`categoryTreeFixture`'da pasif düğüm yok.** `PASIF_ALT_KATEGORILER` boş bir
+      `Set` (kendi JSDoc'u "Karşılıklı Devremülk pasif olmalı" derken kod boş —
+      fixture'ın kendi içinde çelişkisi) ve tüm kökler `active: true`. Buradaki
+      `PASIF_IDLER` (pasif Devremülk kökü + iki yaprak) fixture'da karşılıksız,
+      dolayısıyla `PassiveCategory` story'si ve pasif-yaprak görselleri fixture'la
+      ifade edilemiyor.
+   2. **`residentialAttributes` (5 tanım) ≠ `KONUT_OZNITELIKLERI` (7 tanım).**
+      Anahtarlar/etiketler de farklı; bu dosyanın play testleri 7 tanıma bağlı
+      (bayrak sayıları 9/12, 7 satır düğmesi, ada göre `ISITMA_TIPI`/`AIDAT`/
+      `YAKIT_TIPI`). `categoryAttributesByNodeId` yalnız Konut'u eşliyor.
+
+   `categories.ts` bu turda **yazma yetkim dışında** (yalnız bu ekranın klasörü),
+   dolayısıyla fixture'ı bu iki eksiği kapatacak biçimde uzlaştıramadım; taşıma
+   ertelendi ve raporlandı. CategoryTree/AttributeEditor ile bu ağaç birebir aynı
+   (aynı ağaç iki dosyada iki farklı sayı göstermemeli) kalıyor.
    ────────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -435,14 +450,22 @@ const meta = {
   },
 
   /*
-    `editorValue`, `editorMode`, `dirty` ve `saving` **bilerek yok**: dördünün de
-    yokluğu bir durum (öznitelik seçilmemiş / yetkisiz okuma / temiz taslak /
-    kaydetme uçmuyor). `exactOptionalPropertyTypes` açıkken meta.args'a konan her
+    `editorValue`, `editorMode`, `dirty`, `saving`, `publishing`, `publishError`,
+    `editorValidationErrors` ve `affectedListingCount` **bilerek yok**: her birinin
+    yokluğu bir durum. `exactOptionalPropertyTypes` açıkken meta.args'a konan her
     prop o dosyada geri alınamaz oluyor (TS2375) — ihtiyacı olan story kendisi
-    veriyor. Kalan altısı zorunlu prop; yoklukları zaten temsil edilemiyor.
+    veriyor.
+
+    **`availablePermissions` istisna ve meta.args'ta:** yokluğu "salt okunur"
+    demek (sözleşme: verilmezse ekran salt okunur davranır), ama bu dosyanın
+    düzenleme story'lerinin çoğu `category:manage` **var** sayıyor. Varsayılanı
+    izinli yapmak, her edit story'sinde tekrarı önlüyor; yetkisiz yolu
+    (`ReadOnlyWithoutPermission`) boş dizi ile override ediyor — geri alınamazlık
+    sorun değil çünkü hiçbir story onu `undefined` istemiyor.
   */
   args: {
     state: { status: 'success', data: VERI },
+    availablePermissions: [AdminPermission.CategoryManage],
     onNodeSelect: fn(),
     onEditorChange: fn(),
     onSave: fn(),
@@ -465,26 +488,55 @@ type Story = StoryObj<typeof meta>
 
 /* ──────────────────────────────────────────────────────────────────────────
    Zorunlu durum story'leri (brifing 3.5)
-
-   `Conflict` **yazılmadı ve uydurulmadı**: kanalı yok. Brifing 2.7 `conflict`'i
-   bir ekran durumu sayıyor ama `CategoryAttributePageProps` onu ifade edecek
-   hiçbir alan taşımıyor — `AsyncState`'te de olamaz, çünkü `AsyncState` "veri
-   geldi mi" sorusunu cevaplıyor, çakışma ise "gönderdiğim kayıt/yayın uygulandı
-   mı" sorusunu: ağaç ve öznitelikler sorunsuz yüklüyken (`status: 'success'`)
-   yayın reddedilebilir ve aynı eksende olsalardı reddedilen yayın ekranda duran
-   ağacı hata bloğuna çevirirdi. Moderasyon tarafında bu tam olarak böyle
-   çözüldü: `ModerationDecisionError` ayrı bir prop olarak eklendi
-   (`ModerationActionBarProps.decisionError`). Bu ekranın simetriği
-   (`publishError?: { kind: 'revisionConflict' | ... }`) sözleşmeye eklenmeden
-   story yazılamaz; `state.status = 'error'` ile taklit etmek "yükleme çöktü"
-   demek olurdu. Emsal: PromotionFlagsPanel ve SellerPanel'in yazılmayan
-   Loading/Error story'lerinin gerekçesi de kendi story dosyalarında duruyor.
-   Aynı gerekçe `publishPending` için de geçerli. Raporlandı.
    ────────────────────────────────────────────────────────────────────────── */
 
 /** Kategori seçili, yedi öznitelik listede, editör bir tanım okuyor. */
 export const Success: Story = {
   args: { editorValue: ISITMA_TIPI, editorMode: 'edit' },
+}
+
+/**
+ * **Yayın çakışması (brifing 3.5'in zorunlu `Conflict` story'si).**
+ *
+ * Faz 3'te **yazılamıyordu**: kanalı yoktu. Artık `publishError` var ve `state`'ten
+ * ayrı bir eksen (`ModerationActionBarProps.decisionError`'ın kardeşi): ağaç
+ * sorunsuz **yüklü** (`status: 'success'`), yalnız **yayın** reddedildi çünkü başka
+ * bir yönetici bu arada aynı kategoriyi yayınladı — taban revizyonu değişti.
+ *
+ * Ölçülen üç şey:
+ * - Yayın reddi ağacı **hata bloğuna çevirmedi**: ağaç ve öznitelikler ekranda.
+ * - Reddin sunumu üstte bir uyarı (`role="alert"`), çağıranın verdiği `message`'la.
+ * - Doğru eylem **"tekrar dene" değil "Yeniden yükle"** (`onRetry`): aynı taslak
+ *   aynı çakışmayı verir; kullanıcı yeni tabana göre taslağını gözden geçirmeli.
+ */
+export const Conflict: Story = {
+  args: {
+    editorValue: { ...ISITMA_TIPI, label: 'Isıtma Sistemi' },
+    editorMode: 'edit',
+    dirty: true,
+    publishError: {
+      kind: 'revisionConflict',
+      message:
+        'Siz düzenlerken başka bir yönetici Konut kategorisini yayınladı. Gördüğünüz taban artık güncel değil; yeniden yükleyip taslağınızı yeni tanımlara göre gözden geçirin.',
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    /* Ağaç ayakta: yayın reddi onu gizlemedi, hata bloğuna çevirmedi. */
+    await expect(canvas.getByRole('tree', { name: 'Kategori ağacı' })).toBeInTheDocument()
+    await expect(
+      canvas.getByText('Siz düzenlerken başka bir yönetici Konut kategorisini yayınladı.', {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
+
+    /* Doğru eylem yeniden yükleme — "tekrar dene" değil. Uyarının içindeki düğme
+       `onRetry`'yi çağırır. */
+    await expect(canvas.queryByRole('button', { name: 'Tekrar dene' })).not.toBeInTheDocument()
+    await userEvent.click(canvas.getByRole('button', { name: 'Yeniden yükle' }))
+    await expect(args.onRetry).toHaveBeenCalledTimes(1)
+  },
 }
 
 /**
@@ -894,17 +946,28 @@ export const CreateMode: Story = {
 }
 
 /**
- * `category:manage` izni olmayan kullanıcı.
+ * `category:manage` izni olmayan kullanıcı — kapı artık `availablePermissions`.
  *
+ * `editorMode: 'edit'` **verilse bile** izin yoksa editör `readOnly` ve düzenleme
+ * eylemleri hiç render edilmez: burada kapı editörün modu değil, izin listesi.
  * Editör **`disabled` değil `readOnly`**: kilitli bir form okunmak için değil,
- * dokunulmamak için tasarlanmıştır (soluk kontrast, kayıp odak). Yetkiyi taşıyan
- * ayrı bir prop yok — `CategoryAttributePageProps` izin listesi almıyor ve
- * `editorMode` bu bilgiyi taşıyan tek alan. Raporlandı.
+ * dokunulmamak için tasarlanmıştır. Faz 3'te bu kanal yoktu (RAPOR EDİLMİŞTİ) —
+ * `availablePermissions: []` meta.args'taki izni geçersiz kılıyor.
+ *
+ * Ölçülen iki şey: editör salt okunur (kutu değil metin, "Kaydet" yok) **ve**
+ * yayın düğmesi hiç yok (kilitli değil — yok).
  */
 export const ReadOnlyWithoutPermission: Story = {
-  args: { editorValue: ISITMA_TIPI, editorMode: 'readOnly' },
+  args: { availablePermissions: [], editorValue: ISITMA_TIPI, editorMode: 'edit' },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
+
+    /* Yayın düğmesi araç çubuğunda ve her viewport'ta görünür: izin yokken hiç
+       render edilmemeli (kilitli buton değil). */
+    await expect(
+      canvas.queryByRole('button', { name: 'Değişiklikleri yayınla' }),
+    ).not.toBeInTheDocument()
+
     await detayaGec(canvasElement)
 
     await expect(canvas.getByText('Salt okunur')).toBeInTheDocument()
@@ -912,18 +975,102 @@ export const ReadOnlyWithoutPermission: Story = {
   },
 }
 
-/*
-  `ValidationErrors` story'si **yazılamadı**: kanalı yok.
+/**
+ * **Alan doğrulama hataları (brifing 2.7'nin `validationError` durumu).**
+ *
+ * Faz 3'te **yazılamıyordu**: editör `validationErrors`'ı gösteriyordu ama ekranın
+ * onu besleyecek kanalı yoktu (RAPOR EDİLMİŞTİ). Artık `editorValidationErrors`
+ * doğrudan `AttributeEditorProps.validationErrors`'a akıyor. Ekran doğrulamayı
+ * **yapmaz** — benzersiz `key` gibi kurallar sunucuyu gerektirir; sunucunun
+ * `onSave`/`onPublish` sonrası döndürdüğü hatayı taşır. `publishError.kind ===
+ * 'validation'` üst durumu ("yayın düştü") ile birlikte gelir: biri üstte uyarı,
+ * öteki alanın altında mesaj.
+ */
+export const ValidationErrors: Story = {
+  args: {
+    editorValue: { ...ISITMA_TIPI, label: '' },
+    editorMode: 'edit',
+    dirty: true,
+    editorValidationErrors: {
+      label: 'Etiket boş bırakılamaz.',
+      key: 'Bu anahtar bu kategoride zaten kullanılıyor.',
+    },
+    publishError: {
+      kind: 'validation',
+      message: 'Bazı alanlar geçersiz. Düzeltip yeniden yayınlayın.',
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await detayaGec(canvasElement)
 
-  Brifing 2.7 `validationError`'ı bir ekran durumu sayıyor ve `AttributeEditor`
-  onu gösterecek prop'u taşıyor (`validationErrors: Record<string, string>`, alan
-  adına göre ilgili kutunun `error`'ına bağlanıyor) — ama
-  `CategoryAttributePageProps`'ta o değeri editöre **geçirecek** hiçbir alan yok.
-  Ekran onları kendi de üretemez: doğrulama ("bu anahtar bu kategoride zaten
-  kullanılıyor") sunucuyu gerektiriyor ve ekran veri çekmiyor. Eksik olan tek
-  şey bir `editorValidationErrors?: Record<string, string>` prop'u; eklenene
-  kadar bu ekranda alan hatası gösterilemez. Raporlandı.
-*/
+    /* Alan hatası editörde, ilgili kutunun altında (getByText görünürlüğe bakmaz;
+       drill-down'da gizli editörde de ölçer). */
+    await expect(canvas.getByText('Etiket boş bırakılamaz.')).toBeInTheDocument()
+    await expect(
+      canvas.getByText('Bu anahtar bu kategoride zaten kullanılıyor.'),
+    ).toBeInTheDocument()
+    /* Üst durum: yayın düştü uyarısı. */
+    await expect(
+      canvas.getByText('Değişiklikler yayınlanamadı: alanları düzeltin'),
+    ).toBeInTheDocument()
+  },
+}
+
+/**
+ * Yayın uçuyor: düğmede spinner (`publishing`), `saving`'den ayrı.
+ *
+ * `saving` taslağı kaydediyor, `publishing` yayınlıyor — kullanıcı hangisinin
+ * sürdüğünü ayırt etmeli. Spinner **yayın düğmesinde** çıkar, editörde değil:
+ * yayın kutuları sebepsiz kilitlemez.
+ */
+export const Publishing: Story = {
+  /* Sayısal öznitelik bilerek: seçenek listesi olan bir tanımda her seçenek
+     satırının kendi "Etiket" kutusu var ve `getByLabelText` çok eşleşme bulup
+     patlardı (bkz. `Saving`). */
+  args: {
+    editorValue: { ...ODA_SAYISI, label: 'Oda Adedi' },
+    editorMode: 'edit',
+    publishing: true,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* `loading` düğmeyi devre dışı bırakır (ButtonProps): spinner + kapalı. */
+    await expect(canvas.getByRole('button', { name: 'Değişiklikleri yayınla' })).toBeDisabled()
+
+    /* Editör kilitli değil: kaydetme sürmüyor, yalnız yayın (spinner editörde
+       değil, düğmede). */
+    await expect(canvas.getByLabelText(/^Etiket/)).toBeEnabled()
+  },
+}
+
+/**
+ * Yayın onayı "N ilanı etkileyecek" diyor (`affectedListingCount`).
+ *
+ * Ekran **saymaz** — hangi ilanların bu şemaya bağlı olduğunu sunucu bilir;
+ * seçili düğümün `count`'u yanlış cevap olurdu (o kategorideki toplam ilan,
+ * şemadan etkilenen değil). Sayı Türkçe binlik ayracıyla biçimleniyor.
+ */
+export const AffectedListingCount: Story = {
+  args: { editorValue: ISITMA_TIPI, editorMode: 'edit', affectedListingCount: 1284 },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole('button', { name: 'Değişiklikleri yayınla' }),
+    )
+
+    /* Açılış animasyonu bekleniyor: bkz. `dialogGorunurOlsun`. */
+    await dialogGorunurOlsun('Değişiklikleri yayınla')
+
+    const dialog = dialogIcinde()
+    await expect(
+      dialog.getByText('Bu değişiklik 1.284 ilanı etkileyecek.', { exact: false }),
+    ).toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Vazgeç' }))
+    await popupKapanmasiniBekle()
+  },
+}
 
 /**
  * Uzun içerik: uzun kategori adı, uzun öznitelik etiketi ve boşluksuz uzun bir

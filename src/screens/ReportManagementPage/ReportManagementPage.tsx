@@ -1,11 +1,22 @@
 import type { ReactNode } from 'react'
 import { AlertTriangle, ArrowUpRight, Check, X } from 'lucide-react'
-import { ReportReason, ReportSeverity, ReportStatus, type ListingReport } from '../../types/domain'
+import {
+  AdminPermission,
+  ReportReason,
+  ReportSeverity,
+  ReportStatus,
+  type ListingReport,
+} from '../../types/domain'
 import {
   REPORT_REASON_LABEL,
   REPORT_SEVERITY_LABEL,
   REPORT_STATUS_LABEL,
 } from '../../domain/labels'
+import {
+  REPORT_ACTION_RULE,
+  reportActionAllowed,
+  type ReportAction,
+} from '../../domain/reportActions'
 import { formatDateTime, machineDateTime } from '../../utils/formatDateTime'
 import { Alert } from '../../components/primitives/Alert'
 import { Badge } from '../../components/primitives/Badge'
@@ -16,6 +27,7 @@ import { ErrorState } from '../../components/composites/ErrorState'
 import { FilterBar } from '../../components/composites/FilterBar'
 import { Pagination } from '../../components/composites/Pagination'
 import { ReportCard } from '../../components/composites/ReportCard'
+import { StatusBadge } from '../../components/composites/StatusBadge'
 import type {
   ColumnDef,
   DateRange,
@@ -60,24 +72,52 @@ const DURUM_TONU = {
 } as const satisfies Record<ReportStatus, Tone>
 
 /**
- * Karar eylemlerinin (Çöz / Geçersiz say / Eskale et) görüneceği durumlar.
+ * Ekrandaki üç karar butonunun `reportActions.ts`'teki eylem karşılığı.
  *
- * **Bu bir yetki kapısı değil, durum kapısıdır** ve ekranın elindeki tek gerçek
- * kapı odur: `ReportManagementPageProps` izin listesi taşımıyor (raporlandı),
- * ama `report.status` sözleşmede var. Sonuçlanmış bir şikayete "Çöz" sunmak
- * brifing 2.8'in `alreadyResolved` durumunun ekranda görünen hâli olurdu —
- * kullanıcı basar, sunucu reddeder, ekranın söyleyecek sözü olmaz.
- *
- * `domain/moderationActions.ts` ilan kararları için tam olarak bu tabloyu
- * (`allowedFrom`) tutuyor; şikayetin karşılığı **yok**. Bu liste onun yerel ve
- * geçici hâli: doğru evi `domain/reportActions.ts`. Raporlandı, uydurulmadı —
- * kural kendiliğinden apaçık (kapanmış şikayet yeniden kapatılamaz) ve ekran
- * bir karar vermeden hiçbir eylem gösteremezdi.
+ * "Çöz" → `resolve`, "Geçersiz say" → `dismiss`, "Eskale et" → `escalate`. Kapı
+ * (`eylemSunulur`) bu eşlemeden hem durum (`allowedFrom`) hem izin
+ * (`requiresPermission`) kuralını okuyor.
  */
-const KARAR_VERILEBILIR_DURUMLAR: readonly ReportStatus[] = [
-  ReportStatus.Open,
-  ReportStatus.InReview,
-]
+
+/**
+ * Gerekli izin kullanıcıda var mı? **Kademeler kapsayıcı.**
+ *
+ * Önce gerekli izin doğrudan aranır; gerekli olan **sınırlı** triage
+ * (`ReportTriageLimited`) ise **tam** triage (`ReportTriage`) da yeterlidir —
+ * `superAdmin`/`moderator` sınırlı izni listelerinde taşımaz ama onu **kapsar**
+ * (`ROLE_PERMISSIONS`). Sıra bu yüzden tamı-önce: ters sıra `superAdmin`'e
+ * daraltılmış görünüm verirdi (AGENTS.md: `UserEditContact` ile aynı desen).
+ * `report:resolve` ayrı bir kademedir, hiçbir triage iznini kapsamaz.
+ */
+function izinYeterli(gereken: AdminPermission, izinler: readonly AdminPermission[]): boolean {
+  if (izinler.includes(gereken)) return true
+  if (gereken === AdminPermission.ReportTriageLimited) {
+    return izinler.includes(AdminPermission.ReportTriage)
+  }
+  return false
+}
+
+/**
+ * Bir karar eylemi bu şikayette sunulur mu? **İKİ KAPI:**
+ *
+ * 1. **Durum kapısı** — `reportActionAllowed` (`allowedFrom`). Sonuçlanmış bir
+ *    şikayete "Çöz" sunmak brifing 2.8'in `alreadyResolved` hâli olurdu:
+ *    kullanıcı basar, sunucu reddeder, ekranın söyleyecek sözü olmaz.
+ * 2. **İzin kapısı** — `availablePermissions` gerekli izni içeriyor mu
+ *    (`izinYeterli`, kademeler kapsayıcı).
+ *
+ * `availablePermissions` verilmezse yalnız durum kapısı işler (Faz 3 davranışı,
+ * geriye dönük uyum). Yetkisiz eylem `disabled` verilmez — hiç render edilmez.
+ */
+function eylemSunulur(
+  action: ReportAction,
+  status: ReportStatus,
+  izinler: readonly AdminPermission[] | undefined,
+): boolean {
+  if (!reportActionAllowed(action, status)) return false
+  if (izinler === undefined) return true
+  return izinYeterli(REPORT_ACTION_RULE[action].requiresPermission, izinler)
+}
 
 /**
  * Seçenekler **enum'dan** türetiliyor, elle yazılmıyor.
@@ -106,9 +146,11 @@ const SIDDET_SECENEKLERI: SelectOption[] = Object.values(ReportSeverity).map((de
  * Filtre alanları.
  *
  * **`assignedAdminId` alanı yok, bilerek.** `ReportFilterValues` onu taşıyor ama
- * ekranın elinde admin listesi yok (`ReportManagementPageProps` yalnız
- * `Paginated<ListingReport>` alıyor), dolayısıyla seçeneksiz bir `select` ya da
- * UUID yazdıran bir metin kutusu çıkardı — ikisi de kullanılamaz. Alanın
+ * ekranın elinde **atanabilir adminlerin listesi** yok: `usersById` bir ad
+ * **çözümleme** sözlüğü (yalnız bu sayfada geçen kimlikler), atanabilir adminlerin
+ * kümesi değil — ondan bir filtre kurmak yalnız bu sayfada görünen adminlerle
+ * sınırlı, yanıltıcı bir açılır liste olurdu. Seçeneksiz bir `select` ya da UUID
+ * yazdıran bir metin kutusu da kullanılamaz. Alanın
  * kendisi susturulmadı: aktif filtre sayacı onu **sayıyor** ve "Temizle" onu
  * **temizliyor**, yani URL'den gelen bir `assignedAdminId` kullanıcıya görünmez
  * bir şekilde listeyi daraltmıyor. Raporlandı.
@@ -314,10 +356,11 @@ function Zaman({ value }: { value: string }) {
  * etmez ve kendi `<h1>`'i yoktur — sayfa başlığı kabuğun işi, buradaki en üst
  * başlık `<h2>`.
  *
- * **Düzen:** 48rem'in altında `ReportCard`'ın `queue` varyantından kuyruk
- * kartları, üstünde `DataTable`. İkisi de aynı şikayetleri, aynı etiketlerle ve
- * aynı tonlarla gösterir; geçişi ekran yapar çünkü `DataTable`'ın
- * `mobileMode="cards"` kanalı viewport'a bakmıyor (gerekçe `.css.ts`'te).
+ * **Düzen:** tek `DataTable`, `mobileMode="cards"` ile. 48rem'in altında
+ * `renderMobileCard` `ReportCard`'ın `queue` varyantını çiziyor, üstünde tablo
+ * kalıyor. Geçişi artık `DataTable` kendisi yapıyor (viewport'a kendisi bakıyor,
+ * iki dalı da DOM'da tutup birini medya sorgusuyla boyuyor) — ekran eskiden
+ * `mobileQueue`/`desktopTable` ile yaptığı çift-render telafisini bıraktı.
  *
  * **`AsyncState` altı hâliyle karşılanıyor:**
  * - `idle`/`loading`: tablo **başlığı korunur**, satırlar skeleton olur — veri
@@ -337,35 +380,39 @@ function Zaman({ value }: { value: string }) {
  *   söylenir.
  * - `success` + `stale`: veri + üstte bayatlık uyarısı.
  *
- * **Yetki kapısı YOK ve bu bir eksiklik.** `ReportManagementPageProps`
- * `availablePermissions` taşımıyor — `ListingListPageProps`,
- * `UserManagementPageProps` ve `UserDetailPageProps` taşıyor, `ApprovalQueueProps`
- * `capabilities` taşıyor. Üç karar handler'ı da (`onResolve`/`onDismiss`/
- * `onEscalate`) **zorunlu**, yani "bu kullanıcı çözemez" tip düzeyinde bile
- * söylenemiyor. Sonuç: `report:triageLimited` kademesindeki içerik denetçisi bu
- * ekranda "Çöz" butonunu görüyor. Kapı geldiğinde sıra **kapsayıcı** olmalı:
- * önce `AdminPermission.ReportTriage`, sonra `ReportTriageLimited`'a düşülmeli —
- * ters sıra `superAdmin`'e daraltılmış görünüm verir. Raporlandı; uydurulmadı.
+ * **Karar eylemleri İKİ KAPIDAN geçer** (`eylemSunulur`): durum (`reportActions.ts`'in
+ * `allowedFrom`'u) **ve** izin. `availablePermissions` verilince gerçek yetki
+ * kapısı da işler — kademeler **kapsayıcı**: önce `ReportTriage`, sonra
+ * `ReportTriageLimited`'a düşülür (ters sıra `superAdmin`'e daraltılmış görünüm
+ * verirdi), `report:resolve` ayrıdır. Yani `report:triageLimited` kademesindeki
+ * içerik denetçisi yalnız "Eskale et"i görür; "Çöz"/"Geçersiz say" (`report:resolve`)
+ * hiç render edilmez. `availablePermissions` verilmezse yalnız durum kapısı
+ * işler (Faz 3 davranışı, geriye dönük uyum).
  *
- * **Ad ve ilan çözümlemesi yapılamıyor.** Veri paketi yalnız
- * `Paginated<ListingReport>`; ilan, şikayetçi ve atanan admin ayrı kayıtlar ve
- * ekran veri çekmiyor. Bu yüzden `ReportCardProps`'un `listing`, `reporter` ve
- * `assignedAdmin` prop'ları **geçilemiyor** ve kart/tablo elindeki tek gerçeği —
- * kimliği — gösteriyor: eksik bağlam, kırık başvuru değil. Fixture'dan okumak
- * çözüm değil, uydurmadır. Raporlandı.
+ * **Ad ve ilan çözümlemesi `usersById`/`listingsById` sözlüklerinden.** Ekran
+ * hâlâ veri çekmiyor; sayfa katmanı şikayetlerin kullanıcı ve ilanlarını ayrı
+ * sorguyla getirip bu iki sözlüğü dolduruyor. `ReportCard.reporter`/
+ * `assignedAdmin`/`listing` bunlardan besleniyor ve masaüstü tablosu adı/ilan
+ * özetini gösteriyor. Sözlükte olmayan bir **kullanıcı** kimliği "Bilinmiyor",
+ * olmayan bir **ilan** ise yalnız `listingId` olarak görünür — eksik bağlam,
+ * kırık başvuru değil (brifing 2.8'in `linkedListingUnavailable` hâli).
+ * Sözlükler verilmezse kimlik gösterilir; kart hiçbir durumda çökmez.
  *
- * **Bekleme süresi gösterilemiyor.** `ReportCardProps.now` Faz 3'te tam bu ekran
- * için eklendi ama `ReportManagementPageProps`'ta `now` kanalı yok ve ekran
- * `new Date()` çağıramaz (göreli zaman tuzağı: aynı story dün "3 gündür", bugün
- * "4 gündür" derdi). Sabit bir "bugün" gömmek daha kötüsü olurdu — üretimde her
- * kart yanlış bir süre yazardı. Kart `now` verilmeyince açılış anını **mutlak
- * tarih** olarak gösteriyor, ki brifing 2.8'in istediği görünen veri de tam
- * olarak odur ("Şikayet tarihi"). Raporlandı.
+ * **Bekleme süresi `now` verilirse gösterilir.** Sayfa katmanı "şimdi"yi bir kez
+ * okuyup `now`'a geçiriyor; `ReportCard`'ın `queue` varyantı "3 gündür bekliyor"
+ * der. Ekran `new Date()` çağırmıyor (göreli zaman tuzağı: aynı story dün "3
+ * gündür", bugün "4 gündür" derdi ve Chromatic her gün fark üretirdi). `now`
+ * verilmezse kart açılış anını **mutlak tarih** olarak gösterir (belgelenmiş
+ * yedek, brifing 2.8'in "Şikayet tarihi" verisi).
  *
  * @example
  * <ReportManagementPage
  *   state={{ status: 'success', data: sayfa }}
  *   filters={filtreler}
+ *   availablePermissions={kullanici.permissions}
+ *   now={simdi}
+ *   usersById={kullanicilar}
+ *   listingsById={ilanlar}
  *   onFiltersChange={setFiltreler}
  *   onPageChange={setSayfa}
  *   onReportOpen={(report) => navigate(`/sikayetler/${report.id}`)}
@@ -378,6 +425,10 @@ function Zaman({ value }: { value: string }) {
 export function ReportManagementPage({
   state,
   filters,
+  availablePermissions,
+  now,
+  usersById,
+  listingsById,
   onFiltersChange,
   onPageChange,
   onReportOpen,
@@ -407,39 +458,54 @@ export function ReportManagementPage({
   )
 
   /**
-   * Karar eylemleri. Kapalı şikayette `undefined` — kart ve tablo o zaman eylem
-   * kutusunu hiç çizmez ("yapılamayacak eylem `disabled` verilmez, hiç render
-   * edilmez").
+   * Karar eylemleri; her biri ayrı ayrı **iki kapıdan** (durum + izin) geçer
+   * (`eylemSunulur`). Üçü de kapanınca `undefined` döner — kart ve tablo o zaman
+   * eylem kutusunu hiç çizmez ("yapılamayacak eylem `disabled` verilmez, hiç
+   * render edilmez"). Kart ve tablo aynı kapanıştan beslendiği için bir eylem
+   * mobilde görünüp masaüstünde kaybolamaz.
    */
   const satirEylemleri = (report: ListingReport): ReactNode => {
-    if (!KARAR_VERILEBILIR_DURUMLAR.includes(report.status)) return undefined
+    const sunulur = (action: ReportAction) =>
+      eylemSunulur(action, report.status, availablePermissions)
+
+    const cozVar = sunulur('resolve')
+    const gecersizVar = sunulur('dismiss')
+    const eskaleVar = sunulur('escalate')
+
+    if (!cozVar && !gecersizVar && !eskaleVar) return undefined
 
     return (
       <>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon={<Check size={16} />}
-          onClick={() => onResolve(report)}
-        >
-          Çöz
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          leadingIcon={<X size={16} />}
-          onClick={() => onDismiss(report)}
-        >
-          Geçersiz say
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          leadingIcon={<ArrowUpRight size={16} />}
-          onClick={() => onEscalate(report)}
-        >
-          Eskale et
-        </Button>
+        {cozVar ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon={<Check size={16} />}
+            onClick={() => onResolve(report)}
+          >
+            Çöz
+          </Button>
+        ) : null}
+        {gecersizVar ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            leadingIcon={<X size={16} />}
+            onClick={() => onDismiss(report)}
+          >
+            Geçersiz say
+          </Button>
+        ) : null}
+        {eskaleVar ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            leadingIcon={<ArrowUpRight size={16} />}
+            onClick={() => onEscalate(report)}
+          >
+            Eskale et
+          </Button>
+        ) : null}
       </>
     )
   }
@@ -475,11 +541,23 @@ export function ReportManagementPage({
       id: 'listing',
       header: 'İlan',
       /*
-        Brifing 2.8 "İlan özeti" ve "İlanın mevcut durumu" istiyor; ikisi de
-        `Listing` gerektiriyor ve veri paketinde ilan yok. Gösterilen şey
-        elimizdeki tek gerçek: ilanın kimliği. Raporlandı.
+        Brifing 2.8 "İlan özeti" ve "İlanın mevcut durumu": ilan `listingsById`'de
+        varsa başlık + ilan no + kendi `StatusBadge`'i gösteriliyor. Sözlükte
+        yoksa (silinmiş ilan) elimizdeki tek gerçek olan `listingId` kalıyor —
+        eksik bağlam, kırık başvuru değil (`linkedListingUnavailable`).
       */
-      cell: (row) => <span className={css.identifier}>{row.listingId}</span>,
+      cell: (row) => {
+        const ilan = listingsById?.[row.listingId]
+        return ilan === undefined ? (
+          <span className={css.identifier}>{row.listingId}</span>
+        ) : (
+          <span className={css.listingCell}>
+            <span className={css.listingTitle}>{ilan.title}</span>
+            <span className={css.listingNo}>İlan no: {ilan.listingNo}</span>
+            <StatusBadge status={ilan.status} size="sm" />
+          </span>
+        )
+      },
     },
     { id: 'reason', header: 'Sebep', cell: (row) => REPORT_REASON_LABEL[row.reason] },
     {
@@ -518,25 +596,34 @@ export function ReportManagementPage({
       id: 'reporter',
       header: 'Şikayet eden',
       /*
-        Anonim şikayet gerçek bir hâl: form oturum açmadan da doldurulabiliyor.
-        Alanın yokluğu bir durum, boş string değil — `ReportCard` ile aynı cümle.
+        Üç hâl: (1) `reporterUserId` yok → "Anonim" (form oturum açmadan da
+        doldurulabiliyor; yokluk bir durum, boş string değil). (2) `usersById`'de
+        var → adı. (3) kimlik var ama sözlükte yok → "Bilinmiyor" (çözülemeyen
+        başvuru; ham UUID bir kullanıcı adı değil, kayıt numarasıdır).
       */
-      cell: (row) =>
-        row.reporterUserId === undefined ? (
-          <span className={css.empty}>Anonim</span>
+      cell: (row) => {
+        if (row.reporterUserId === undefined) return <span className={css.empty}>Anonim</span>
+        const ad = usersById?.[row.reporterUserId]?.fullName
+        return ad === undefined ? (
+          <span className={css.empty}>Bilinmiyor</span>
         ) : (
-          <span className={css.identifier}>{row.reporterUserId}</span>
-        ),
+          <span className={css.person}>{ad}</span>
+        )
+      },
     },
     {
       id: 'assignedAdmin',
       header: 'Atanan admin',
-      cell: (row) =>
-        row.assignedAdminId === undefined ? (
-          <span className={css.empty}>Atanmadı</span>
+      /* `reporter` ile aynı üç hâl; atanmamışsa "Atanmadı". */
+      cell: (row) => {
+        if (row.assignedAdminId === undefined) return <span className={css.empty}>Atanmadı</span>
+        const ad = usersById?.[row.assignedAdminId]?.fullName
+        return ad === undefined ? (
+          <span className={css.empty}>Bilinmiyor</span>
         ) : (
-          <span className={css.identifier}>{row.assignedAdminId}</span>
-        ),
+          <span className={css.person}>{ad}</span>
+        )
+      },
     },
     { id: 'createdAt', header: 'Şikayet tarihi', cell: (row) => <Zaman value={row.createdAt} /> },
     {
@@ -608,33 +695,52 @@ export function ReportManagementPage({
       <>
         {uyari}
 
-        <div className={css.mobileQueue}>
-          {veri.items.map((report) => {
+        {/*
+          Tek DataTable, çift değil: `mobileMode="cards"` artık viewport'a kendisi
+          bakıyor (48rem'in altında kart, üstünde tablo) ve iki dalı da DOM'da
+          tutup birini medya sorgusuyla boyuyor. Kart dalı `ReportCard`'ın `queue`
+          varyantını `renderMobileCard` ile çiziyor; eski `mobileQueue`/
+          `desktopTable` çift-render telafisi kalktı. Her viewport'ta yalnız bir
+          düzen erişilebilirlik ağacında — ekran okuyucu kullanıcısı aynı kuyruğu
+          iki kez gezmez.
+        */}
+        <DataTable<ListingReport>
+          rows={veri.items}
+          columns={sutunlar(benzer)}
+          density="comfortable"
+          visualStyle="bordered"
+          mobileMode="cards"
+          renderMobileCard={(report) => {
             const eylem = satirEylemleri(report)
+            const ilan = listingsById?.[report.listingId]
+            const reporter =
+              report.reporterUserId !== undefined ? usersById?.[report.reporterUserId] : undefined
+            const atanan =
+              report.assignedAdminId !== undefined ? usersById?.[report.assignedAdminId] : undefined
             return (
+              /*
+                Opsiyonel prop'lar koşullu spread ile: `exactOptionalPropertyTypes`
+                açıkken bir çözülemeyen kimliğin `undefined`'ını doğrudan geçmek
+                (`listing={ilan}`) TS2375 verir. Çözülemeyince kart kendi
+                yedeğine düşer (kimliği gösterir) — masaüstündeki "Bilinmiyor"la
+                birebir aynı değil ama aynı ilke: eksik bağlam, kırık başvuru değil.
+              */
               <ReportCard
-                key={report.id}
                 report={report}
                 variant="queue"
                 relatedReportCount={benzer(report)}
                 onClick={(secilen) => onReportOpen(secilen)}
+                {...(ilan !== undefined && { listing: ilan })}
+                {...(reporter !== undefined && { reporter })}
+                {...(atanan !== undefined && { assignedAdmin: atanan })}
+                {...(now !== undefined && { now })}
                 {...(eylem !== undefined && {
                   actions: <span className={css.cardActions}>{eylem}</span>,
                 })}
               />
             )
-          })}
-        </div>
-
-        <div className={css.desktopTable}>
-          <DataTable<ListingReport>
-            rows={veri.items}
-            columns={sutunlar(benzer)}
-            density="comfortable"
-            visualStyle="bordered"
-            mobileMode="scroll"
-          />
-        </div>
+          }}
+        />
 
         {/* `totalItems: 0` iken Pagination kendini hiç render etmiyor. */}
         <Pagination

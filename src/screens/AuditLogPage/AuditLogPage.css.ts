@@ -35,6 +35,23 @@ export const baslik = style({
 })
 
 /**
+ * Başlık ile "Dışa aktar" butonunu aynı satıra alan kutu.
+ *
+ * `flexWrap: 'wrap'` + `gap`: dar ekranda buton başlığın altına iner, yan yana
+ * sıkışıp taşmaz. `justifyContent: 'space-between'` başlığı sola, butonu sağa
+ * yaslar; `alignItems: 'center'` ikisini dikeyde ortalar. `minWidth: 0` başlığın
+ * (metni saran taraf) daralmasına izin verir — sabit genişlikli butona değil.
+ */
+export const baslikSatiri = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: vars.space[3],
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  minWidth: 0,
+})
+
+/**
  * `unauthorized` durumundaki güvenli geri dönüş bağlantısının satırı
  * (brifing 2.1).
  *

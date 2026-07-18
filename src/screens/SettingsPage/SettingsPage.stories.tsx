@@ -70,53 +70,32 @@ function hucre(
 
 /*
   ─────────────────────────────────────────────────────────────────────────────
-  BULUNAN KUSUR — `RadioGroup` primitive'inde seçeneklerin erişilebilir adı
-  bozuk. RAPOR EDİLDİ, bu turda DÜZELTİLMEDİ (ekran `src/components/`'e yazmıyor).
+  KAPANDI — `RadioGroup` primitive'inde seçeneklerin erişilebilir adı artık doğru.
 
-  `RadioGroup`, `label` verildiğinde FieldShell üzerinden bir `Field.Root` +
+  Kusur: `RadioGroup`, `label` verildiğinde FieldShell üzerinden bir `Field.Root` +
   `Field.Label` kuruyor. Base UI'da `Field.Root` bir `LabelableProvider` render
-  ediyor ve `Field.Label` kendi id'sini oraya yazıyor (`useLabel` →
-  `setContextLabelId`). `RadioGroup` ile `Radio` **kendi labelable kapsamlarını
-  açmıyor** — ikisi de aynı context'i okuyor:
+  ediyor ve `Field.Label` kendi id'sini oraya yazıyor; `RadioGroup` ile `Radio`
+  kendi labelable kapsamlarını açmadığı için grubun `labelId`'si her radyoya da
+  iniyordu (`RadioRoot.js:120 useAriaLabelledBy(prop, labelId, …)` sarmalayan
+  `<label>` fallback'ini eziyor). Sonuç: "Kendi temam" grubundaki üç seçenek de
+  "Kendi temam" diye okunuyordu — ad eksik değil yanlış, axe yakalamaz.
 
-    RadioGroup.js:149  ariaLabelledby = elementProps['aria-labelledby'] ?? labelId ?? …
-    RadioRoot.js:120   useAriaLabelledBy(ariaLabelledByProp, labelId, inputRef, …)
-    useAriaLabelledBy  ariaLabelledBy = explicitAriaLabelledBy ?? labelId ?? fallback
-
-  Yani grubun `labelId`'si her radyoya da iniyor ve **sarmalayan `<label>`
-  fallback'ini eziyor**: "Kendi temam" grubundaki üç seçeneğin üçü de "Kendi
-  temam" diye okunuyor — ekran okuyucu kullanıcısı temaları birbirinden ayırt
-  edemiyor. Base UI'ın bu iş için beklediği yapı seçenek başına `Field.Item`
-  (RadioRoot zaten `useFieldItemContext` okuyor); bizim primitive'imiz çıplak bir
-  `<label>` kullanıyor.
-
-  Neden bugüne kadar görülmedi: `RadioGroup.stories.tsx`'te hiç play testi yok ve
-  bu ekran primitive'in **ilk gerçek tüketicisi**. axe de yakalamaz — ihlal "ad
-  yok" değil, "ad yanlış". AGENTS.md'nin "ikisi ancak yeni bir tüketici geldiğinde
-  görüldü" ailesinin aynısı.
-
-  Bu yüzden aşağıdaki testler seçenekleri **adlarıyla aramıyor**: bozuk bir adı
-  ölçen test, kusuru sabitler — primitive düzeltilince düşer ve düzelten kişi
-  onu geri "düzeltmeye" çalışır. Doğru adı ölçen bir test ise bugün kırmızı
-  olurdu. Üçüncü yol seçildi: ad iddiası hiç kurulmuyor, seçenek görünür
-  metninden bulunuyor. Primitive düzeltilince buraya
-  `toHaveAccessibleName(/^Sıcak Amber/)` eklenmeli.
+  Düzeltme: primitive her seçeneği `Field.Item` ile kendi labelable kapsamına
+  alıyor (grubun id'si geride kalıyor); içteki `Field.Label` seçeneğin kendi
+  adını, `Field.Description` ise ada karışmadan `aria-describedby`'yi veriyor.
+  Regresyon `RadioGroup.stories.tsx` → `AccessibleNamePerOption`'da; buradaki
+  testler artık seçeneği **adıyla** buluyor.
   ─────────────────────────────────────────────────────────────────────────────
 */
 
 /**
- * Bir tema seçeneğinin radyo düğmesini görünür metninden bulur.
+ * Bir tema seçeneğinin radyo düğmesini erişilebilir adından bulur.
  *
- * Erişilebilir adla aranmıyor — gerekçe yukarıdaki kusur notunda. Seçeneğin
- * görünür etiketinden kendi `<label>`'ına, oradan radyoya iniliyor; `getByText`
- * yalnız doğrudan metin çocuklarına baktığı için açıklama metni karışmıyor.
+ * Ad artık seçeneğin kendi etiketi (yukarıdaki KAPANDI notu): grup kapsamında
+ * `getByRole('radio', { name })` yalnız doğru bağda geçer, grubun adı sızmaz.
  */
 function temaSecenegi(grup: HTMLElement, ad: string): HTMLElement {
-  const etiket = within(grup).getByText(ad).closest('label')
-
-  if (etiket === null) throw new Error(`"${ad}" tema seçeneğinin etiketi bulunamadı`)
-
-  return within(etiket).getByRole('radio')
+  return within(grup).getByRole('radio', { name: ad })
 }
 
 /**
@@ -205,30 +184,35 @@ export default meta
 
 type Story = StoryObj<typeof meta>
 
-/*
-  ─────────────────────────────────────────────────────────────────────────────
-  `Loading` story'si YAZILAMADI — brifing 3.5 onu SettingsPage için zorunlu
-  sayıyor ama `SettingsPageProps`'ta yükleme kanalı YOK.
-
-  Sözleşmede `state: AsyncState<…>` yok; `saving` ve `dirty` var, ikisi de
-  "veri geldi mi" sorusunu değil "gönderdiğim değişiklik uçuyor mu" sorusunu
-  cevaplıyor. `rolePermissions`, `currentTheme` ve `systemDefaultTheme` zorunlu
-  prop: ekran onlarsız render edilemez, dolayısıyla "henüz yüklenmedi" hâlini
-  ifade edecek bir değer de yok.
-
-  Uydurma prop eklenmedi (`state`, `loading`) — sözleşmeye dokunmak bu turun
-  kapsamı dışında ve iskeletini kendi uyduran bir ekran, veri gelmediğinde
-  "izin yok" demekle aynı yalanı söylerdi. Emsal: PromotionFlagsPanel ve
-  SellerPanel'in yazılmayan Loading/Error story'lerinin gerekçesi de kendi story
-  dosyalarında yorumlu duruyor.
-
-  Aynı sebeple brifing 2.9'un `error`, `saved` ve `permissionConflict` ekran
-  durumları da yok. (3.5 bunları SettingsPage için zaten istemiyor; 2.9 istiyor.)
-  Kanal açılırsa story tek satırla eklenir.
-  ─────────────────────────────────────────────────────────────────────────────
-*/
-
 // --- Zorunlu state story'leri -----------------------------------------------
+
+/**
+ * Kabuk yükleniyor: ekran ölçü koruyan bir iskelet gösterir.
+ *
+ * Brifing 3.5 bu story'yi zorunlu sayıyordu ama Faz 3'te `SettingsPageProps`'ta
+ * yükleme kanalı **yoktu** (RAPOR EDİLMİŞTİ); bu turda `loading` bayrağı bağlandı
+ * ve story yazılabildi. `RolePermissionMatrix`'in `saving` dışında yükleme kanalı
+ * olmadığı için iskeleti **ekran kendi kuruyor** (sekme şeridi + başlık + açıklama
+ * + matris bloğu); kap `aria-busy`, `Skeleton`'lar `aria-hidden`.
+ *
+ * `loading` iken veri prop'ları **yok sayılır**: yer tutucu `ROLE_PERMISSIONS`
+ * geçilse de matris, sekmeler ve Kaydet hiç render edilmez.
+ */
+export const Loading: Story = {
+  args: { loading: true, rolePermissions: ROLE_PERMISSIONS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* İskelet `aria-busy` ile duyuruluyor; içeriği ekran okuyucuya `aria-hidden`. */
+    await expect(canvasElement.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+
+    /* Veri yok sayılıyor: matris, sekmeler ve eylemler DOM'a hiç girmez. */
+    await expect(canvas.queryByRole('table')).not.toBeInTheDocument()
+    await expect(canvas.queryAllByRole('checkbox')).toHaveLength(0)
+    await expect(canvas.queryByRole('tab', { name: 'Roller' })).not.toBeInTheDocument()
+    await expect(canvas.queryByRole('button', { name: 'Kaydet' })).not.toBeInTheDocument()
+  },
+}
 
 /** Yüklendi, yetkili, taslak kayıtlıyla aynı: kaydedilecek bir şey yok. */
 export const Success: Story = {
@@ -338,6 +322,35 @@ export const Unauthorized: Story = {
     const terim = canvas.getByText('Sistem varsayılan teması')
     await expect(terim.tagName).toBe('DT')
     await expect(terim.nextElementSibling).toHaveTextContent('Kurumsal Mavi')
+  },
+}
+
+/**
+ * Sunucu ayarları 403 ile reddetti — `unauthorized` bayrağının **sunucu** hâli.
+ *
+ * `Unauthorized` (yukarıda, `canManagePermissions: false`) ile karıştırılmamalı:
+ * o "görürsün ama düzenleyemezsin" (matris `readOnly`, tema okunur, Kaydet yok);
+ * bu ise "hiç göremezsin". Ekran `ErrorState variant="page"` gösterir, matris/tema
+ * **hiç render edilmez** ve tekrar deneme sunulmaz — 403 tekrar denemekle geçmez.
+ * Yer tutucu `ROLE_PERMISSIONS` geçilse de yok sayılır. İstemcinin izin listesi
+ * bayatlamış olabilir; önden bilinen yetkisizlikte bu ekran zaten hiç açılmaz.
+ */
+export const UnauthorizedByServer: Story = {
+  args: { unauthorized: true, rolePermissions: ROLE_PERMISSIONS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* `ErrorState` `role="alert"` taşır; hata veri yerine geçtiği an duyurulur. */
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Ayarlara erişiminiz yok')
+
+    /* Tekrar dene YOK: 403 tekrar denemekle geçmez. */
+    await expect(canvas.queryByRole('button', { name: /Tekrar dene/ })).not.toBeInTheDocument()
+
+    /* Matris ve tema hiç render edilmez — `readOnly` matris değil, YOKLUK. */
+    await expect(canvas.queryByRole('table')).not.toBeInTheDocument()
+    await expect(canvas.queryAllByRole('checkbox')).toHaveLength(0)
+    await expect(canvas.queryByRole('tab', { name: 'Roller' })).not.toBeInTheDocument()
+    await expect(canvas.queryByRole('radiogroup')).not.toBeInTheDocument()
   },
 }
 
@@ -521,9 +534,10 @@ export const ReviewHintNamesItsBaseline: Story = {
  * olur. `toHaveBeenCalledWith` fazladan argümanı yakalar.
  *
  * İki grup birbirinden ayrılıyor: aynı üç seçenek iki kez render ediliyor.
- * Grupların **kendi** adları doğru (`RadioGroup` grubun `aria-labelledby`'sini
- * doğru kuruyor); bozuk olan seçeneklerin adı — bkz. dosyanın başındaki kusur
- * notu. Bu yüzden seçenek `temaSecenegi` ile görünür metninden bulunuyor.
+ * Grupların **kendi** adları da, seçeneklerin adları da doğru (`RadioGroup`
+ * grubun `aria-labelledby`'sini kuruyor, seçenekler `Field.Item` ile kendi
+ * kapsamlarını açıyor — bkz. dosyanın başındaki KAPANDI notu). Bu yüzden seçenek
+ * artık `temaSecenegi` ile **adından** bulunuyor.
  */
 export const ThemeChangeReportsOnlyTheThemeName: Story = {
   args: { savedRolePermissions: KAYITLI },
@@ -533,6 +547,18 @@ export const ThemeChangeReportsOnlyTheThemeName: Story = {
     await userEvent.click(canvas.getByRole('tab', { name: 'Görünüm' }))
 
     const kendiTemam = await canvas.findByRole('radiogroup', { name: 'Kendi temam' })
+
+    /*
+      KAPANDI ölçümü: üç tema seçeneği kendi adıyla bulunuyor ve grubun adı
+      ("Kendi temam") hiçbir seçeneğe sızmıyor. Açıklamalı seçenekte ad yalnız
+      etiketten geliyor; açıklama `aria-describedby`'de.
+    */
+    for (const ad of ['Kurumsal Mavi', 'Nötr Slate', 'Sıcak Amber']) {
+      within(kendiTemam).getByRole('radio', { name: ad })
+    }
+    await expect(within(kendiTemam).queryByRole('radio', { name: 'Kendi temam' })).toBeNull()
+    await expect(temaSecenegi(kendiTemam, 'Kurumsal Mavi')).toHaveAccessibleName('Kurumsal Mavi')
+
     await userEvent.click(temaSecenegi(kendiTemam, 'Sıcak Amber'))
     await expect(args.onThemeChange).toHaveBeenCalledWith('warm-amber')
 

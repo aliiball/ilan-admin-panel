@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { ALL_ADMIN_PERMISSIONS, AdminRole, type AdminPermission } from '../../types/domain'
 import { ConfirmDialog } from '../../components/composites/ConfirmDialog'
+import { ErrorState } from '../../components/composites/ErrorState'
 import { RolePermissionMatrix } from '../../components/composites/RolePermissionMatrix'
 import { Button } from '../../components/primitives/Button'
 import { RadioGroup } from '../../components/primitives/RadioGroup'
+import { Skeleton } from '../../components/primitives/Skeleton'
 import { Switch } from '../../components/primitives/Switch'
 import { Tabs } from '../../components/primitives/Tabs'
 import type {
@@ -90,6 +92,45 @@ const SEKME_ROLLER = 'roller'
 const SEKME_GORUNUM = 'gorunum'
 
 /**
+ * Ölçü koruyan yükleme iskeleti (`loading` iken).
+ *
+ * Spinner'lı boş ekran değil: brifing 2.1'in "loading durumları layout shift
+ * üretmemelidir" kuralı iskeletin gerçek içerikle **aynı yeri** kaplamasını
+ * istiyor. `RolePermissionMatrix`'in kendi `loading`/`skeleton` kanalı **yok**
+ * (yalnız `saving` var, o "kaydediyorum" der, "henüz yüklenmedi" demez), bu
+ * yüzden ekran kendi iskeletini kuruyor: sekme şeridi + başlık + açıklama + matris
+ * bloğu, gerçek düzenin ölçüsünde.
+ *
+ * Kap `aria-busy` ile duyuruyor; `Skeleton`'ların kendisi `aria-hidden` (boş
+ * kutular ekran okuyucuya okunmaz). Ham ölçüler (`4rem`, `12rem`) kural ihlali
+ * değil: `SkeletonProps.width` JSDoc'u onları açıkça istisna sayıyor — değer
+ * taklit edilen içeriğe göre değişir, token'a bağlanamaz.
+ */
+function Iskelet() {
+  return (
+    <div className={css.root} aria-busy="true">
+      <div className={css.tabsSkeleton}>
+        <Skeleton variant="text" width="4rem" />
+        <Skeleton variant="text" width="5rem" />
+      </div>
+
+      <div className={css.section}>
+        {/* Başlığın satır kutusunu koruyor: bkz. `headingSkeleton`. */}
+        <span className={css.headingSkeleton}>
+          <Skeleton variant="text" width="12rem" />
+        </span>
+
+        <Skeleton variant="text" lines={2} />
+
+        <div className={css.matrixSkeleton}>
+          <Skeleton variant="text" lines={8} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Ayarlar ekranı — rol izin matrisi ve tema seçimi.
  *
  * Veri **prop'tan gelir, çekilmez**. Ekran bir kabuk değildir: `AppShell`,
@@ -140,12 +181,18 @@ const SEKME_GORUNUM = 'gorunum'
  * diye tanımlıyor, yani tema değişikliğini taşıyan bir kirlilik kanalı yok.
  * Anında uygulama bu sözleşmenin tek tutarlı okuması.
  *
- * **Kanalı olmayan brifing gereksinimleri** (uydurulmadı, raporlandı): 2.9'un
+ * **`loading` ve `unauthorized` bu turda bağlandı.** `loading` iken ekran ölçü
+ * koruyan bir iskelet gösterir (matris `saving` dışında yükleme kanalı taşımıyor,
+ * ekran kendi iskeletini kuruyor); `unauthorized` (sunucu 403) iken
+ * `ErrorState variant="page"` gösterir ve matris/tema hiç render edilmez. İkisi de
+ * `AsyncState` değil düz bayrak: reponun `StatCard`/`DataTable` kalıbı bu.
+ *
+ * **Hâlâ kanalı olmayan brifing gereksinimleri** (uydurulmadı, raporlandı): 2.9'un
  * moderasyon tercihleri, ilan süreleri, sayfalama varsayılanları ve audit özeti
- * verileri; `loading`, `error`, `saved` ve `permissionConflict` ekran durumları.
- * `SettingsPageProps`'ta ne `state: AsyncState` ne de bunlara karşılık gelen bir
- * alan var. Brifing 2.9'un `Select`'i de bu yüzden yok: süreleri ve sayfalama
- * varsayılanlarını taşıyan prop olmadan seçtirecek bir şey yok.
+ * verileri; `error`, `saved` ve `permissionConflict` ekran durumları.
+ * `SettingsPageProps`'ta bunlara karşılık gelen bir alan yok. Brifing 2.9'un
+ * `Select`'i de bu yüzden yok: süreleri ve sayfalama varsayılanlarını taşıyan prop
+ * olmadan seçtirecek bir şey yok.
  *
  * @example
  * <SettingsPage
@@ -170,6 +217,8 @@ export function SettingsPage({
   systemDefaultTheme,
   canManagePermissions,
   canManageDefaultTheme,
+  loading = false,
+  unauthorized = false,
   saving = false,
   dirty = false,
   onPermissionChange,
@@ -181,6 +230,32 @@ export function SettingsPage({
   const [sekme, setSekme] = useState<string>(SEKME_ROLLER)
   const [gozdenGecir, setGozdenGecir] = useState(false)
   const [sifirlamaAcik, setSifirlamaAcik] = useState(false)
+
+  /*
+    Kabuk yükleniyor: iskelet, veri prop'ları yok sayılır. `saving`'den ayrı
+    kapı — biri ilk yükleme, öteki kaydetme. Hook'lardan sonra, kural gereği
+    (koşulsuz çağrılırlar) ama render'dan önce.
+  */
+  if (loading) {
+    return <Iskelet />
+  }
+
+  /*
+    Sunucu 403: `canManagePermissions: false`'tan FARKLI. O "düzenleyemezsin ama
+    görürsün" (matris `readOnly`); bu "hiç göremezsin", matris/tema render
+    edilmez. Tekrar deneme YOK — 403 tekrar denemekle geçmez (`ErrorState`
+    `onRetry`'siz butonu hiç basmaz). `UserDetailPage`'in `unauthorized` kapısıyla
+    aynı kalıp; başlık düzeyi verilmiyor (`<p>` + `role="alert"`), sibling gibi.
+  */
+  if (unauthorized) {
+    return (
+      <ErrorState
+        variant="page"
+        title="Ayarlara erişiminiz yok"
+        description="Sunucu bu ayarları görüntüleme isteğinizi reddetti. Yetkiniz değişmiş olabilir; sol menüden erişebileceğiniz bir sayfaya geçin."
+      />
+    )
+  }
 
   /*
     Üç kapı sırayla: yetkisi yoksa salt okunur (kilitli değil), gözden geçirirken

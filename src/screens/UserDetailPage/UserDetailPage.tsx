@@ -20,14 +20,18 @@ import { formatCurrency } from '../../utils/formatCurrency'
 import { formatDateTime, machineDateTime } from '../../utils/formatDateTime'
 import { Alert } from '../../components/primitives/Alert'
 import { Button } from '../../components/primitives/Button'
+import { Modal } from '../../components/primitives/Modal'
+import { NumberInput } from '../../components/primitives/NumberInput'
 import { Select } from '../../components/primitives/Select'
 import { Skeleton } from '../../components/primitives/Skeleton'
 import { Tabs } from '../../components/primitives/Tabs'
-import { ConfirmDialog } from '../../components/composites/ConfirmDialog'
+import { Textarea } from '../../components/primitives/Textarea'
 import { DataTable } from '../../components/composites/DataTable'
 import { EmptyState } from '../../components/composites/EmptyState'
 import { ErrorState } from '../../components/composites/ErrorState'
+import { Pagination } from '../../components/composites/Pagination'
 import { ReportCard } from '../../components/composites/ReportCard'
+import { SellerPanel } from '../../components/composites/SellerPanel'
 import { StatusBadge } from '../../components/composites/StatusBadge'
 import { UserSummaryCard } from '../../components/composites/UserSummaryCard'
 import type {
@@ -356,13 +360,43 @@ function BolumHatasi({
  * işidir. Sunucunun reddettiği hâl `state.status === 'unauthorized'` olarak
  * gelir — istemcinin izin listesi bayatlamış olabilir.
  *
- * ## Yaptırım kaydı verilemiyor
+ * ## Yaptırım: aktif kayıt ve geçmiş sicil
  *
- * `UserSummaryCardProps.activeSanction` Faz 3'te tam da bu ekran için eklendi,
- * ama `UserDetailData` `UserSanction` **taşımıyor** (`user`, `listings`,
- * `reports`, `auditEntries`). Kart bu yüzden yaptırımın yalnız **tipini**
- * durumdan türetiyor; "neden" ve "ne zamana kadar" (brifing 2.6'nın "aktif
- * yaptırım" verisi) bu ekranda **cevapsız**. Uydurulmadı, raporlandı.
+ * Faz 3 sonrası (b) turunda `UserDetailData` `activeSanction` ve `sanctions`
+ * taşımaya başladı; iki kanal iki ayrı yüzeyi besliyor ve ikisi de **yetki
+ * sınırıyla** çiziliyor:
+ *
+ * - **`activeSanction` → `UserSummaryCard`.** Kart alanları varyanta göre
+ *   açıyor: `detailed` (destek) yalnız tip + `endsAt` ("askınız 29 Tem'de
+ *   bitiyor"), `security` ayrıca `reason` + `startsAt` + `createdByAdminId`.
+ *   `UserSanction.reason` iç gerekçe metnidir ve `destek`e gösterilmez; kapıyı
+ *   kartın kendi `variant` mantığı kuruyor, dolayısıyla kayıt her iki varyanta
+ *   da güvenle verilebiliyor — gizlemeyi variant yapıyor.
+ * - **`sanctions` → `SellerPanel` (`risk`).** Yürürlükteki **ve** kaldırılmış
+ *   (`revokedAt` dolu) kayıtların sicili; `revokedAt` olan "Kaldırıldı" diye
+ *   işaretlenir ama düşürülmez ("kaldırılmış yaptırım da sicildir"). Sicil
+ *   `reason` içerdiği için yalnız **tam görünümde** (`UserView`) render
+ *   ediliyor — `destek` (`UserViewProfile`) onu görmez. Kapı burada sayfanın:
+ *   panel yetki bilmez.
+ *
+ * **Rapor (SellerPanel wart):** sicili gösterecek tek sözleşmeli component
+ * `SellerPanel`'in `risk` varyantı; onu bu ekrana koymak `<section
+ * aria-label="İlan sahibi">` landmark'ını ve kartla çakışan bir kimlik bloğunu
+ * (ikinci avatar/durum rozeti) beraberinde getiriyor — "İlan sahibi" bir
+ * kullanıcı detayında yanıltıcı bir ad. Sicile özel, hafif bir yüzey (ya
+ * `UserSummaryCard`'a `sanctions` listesi ya ayrı bir `SanctionHistory`
+ * component'i) sözleşmede yok; uydurulmadı, raporlandı.
+ *
+ * ## Rol değişikliği çakışması
+ *
+ * `onRoleChange` üçüncü opsiyonel `expectedRoleVersion` argümanını taşıyor ama
+ * onu besleyecek bir **damga** `UserDetailData`/`UserAccount`'ta yok (sürüm
+ * alanı yok). Ekran bu yüzden versiyon **göndermiyor** — uydurulmadı,
+ * raporlandı. Çakışma yine de ifade edilebiliyor: sunucu reddederse sonucu
+ * `roleChangeError` (bir `UiError`) taşıyor ve ekran onu rol kutusunun altında
+ * `danger` bir `Alert` ile gösteriyor. Tekrar deneme **yok**: aynı damga aynı
+ * çakışmayı üretir, doğru eylem yeniden yükleyip bakmak (`ModerationDecisionError`
+ * ile aynı aile).
  *
  * ## Düzen
  *
@@ -376,9 +410,11 @@ function BolumHatasi({
  *   state={{ status: 'success', data }}
  *   availablePermissions={ROLE_PERMISSIONS[AdminRole.Support]}
  *   onListingOpen={(ilan) => navigate(`/ilanlar/${ilan.id}`)}
- *   onSuspend={askiyaAl}
- *   onBan={yasakla}
- *   onRoleChange={rolAta}
+ *   onListingsPageChange={(sayfa) => cek(sayfa)}
+ *   onSuspend={(input) => askiyaAl(input)}
+ *   onBan={(input) => yasakla(input)}
+ *   onRoleChange={(rol) => rolAta(rol)}
+ *   roleChangeError={rolHatasi}
  *   onRetry={yenidenYukle}
  * />
  */
@@ -386,13 +422,24 @@ export function UserDetailPage({
   state,
   availablePermissions,
   onListingOpen,
+  onListingsPageChange,
   onSuspend,
   onBan,
   onRoleChange,
+  roleChangeError,
   onRetry,
 }: UserDetailPageProps) {
   const [sekme, setSekme] = useState<string>(SEKME_ILANLAR)
-  const [banOnayiAcik, setBanOnayiAcik] = useState(false)
+  /*
+    Açık yaptırım dialog'unun türü; `undefined` = kapalı. Dialog aday varken
+    **mount** ediliyor (UserManagementPage kalıbı): kapanış = unmount, yani
+    portal ve Base UI'ın odak koruma span'leri (`data-base-ui-focus-guard`)
+    beraber gidiyor.
+  */
+  const [yaptirimTuru, setYaptirimTuru] = useState<'suspend' | 'ban' | undefined>(undefined)
+  /* Dialog'un topladığı `SanctionInput`: gerekçe (ikisinde de) ve süre (yalnız askı). */
+  const [gerekce, setGerekce] = useState('')
+  const [sure, setSure] = useState<number | undefined>(undefined)
 
   if (state.status === 'idle' || state.status === 'loading') {
     return <Iskelet />
@@ -490,15 +537,50 @@ export function UserDetailPage({
 
   const kartHesabi = tamGorunum ? user : sinirliGorunumHesabi(user)
 
+  /* ── Yaptırım dialog'u ── */
+
+  /*
+    Her iki eylem de artık bir `SanctionInput` topluyor (Faz 3'te alansızdı,
+    RAPOR EDİLMİŞTİ): buton doğrudan handler'ı çağırmıyor, dialog açıyor.
+    Askıda süre **zorunlu** (`durationDays` — süresiz askı kavramsal olarak bir
+    band, yani ban); makul bir varsayılan (7 gün) açılışta konuyor ki alan
+    doldurulmuş gelsin, moderatör değiştirebilsin.
+  */
+  const yaptirimAc = (tur: 'suspend' | 'ban') => {
+    setGerekce('')
+    setSure(tur === 'suspend' ? 7 : undefined)
+    setYaptirimTuru(tur)
+  }
+
+  const gerekceGecerli = gerekce.trim().length > 0
+  const yaptirimGecerli =
+    yaptirimTuru === 'suspend'
+      ? gerekceGecerli && sure !== undefined && sure >= 1
+      : yaptirimTuru === 'ban'
+        ? gerekceGecerli
+        : false
+
+  const yaptirimOnayla = () => {
+    const reason = gerekce.trim()
+    if (yaptirimTuru === 'suspend' && sure !== undefined) {
+      /* `durationDays` her zaman bir sayı: askıda `sure` `undefined` olamaz (yukarıdaki kapı). */
+      onSuspend({ reason, durationDays: sure })
+    } else if (yaptirimTuru === 'ban') {
+      /* Ban süresiz — `durationDays` verilmiyor (`permanentBanSanction`'ın `endsAt`'i yok). */
+      onBan({ reason })
+    }
+    setYaptirimTuru(undefined)
+  }
+
   /* ── Eylemler ── */
 
   const eylemler: ReactNode[] = []
 
   if (askiyaAlinabilir) {
     /*
-      Askıya alma onay istemiyor: süreli ve geri alınabilir bir karar
-      (`UserSanction.endsAt` + `revokedAt`). Yasaklama süresizdir
-      (`permanentBanSanction`'ın `endsAt`'i **yok**) ve onay ister.
+      Askıya alma süreli ve geri alınabilir bir karar (`UserSanction.endsAt` +
+      `revokedAt`); dialog gerekçe + süre toplar. Yasaklama süresizdir
+      (`permanentBanSanction`'ın `endsAt`'i **yok**) ve `danger` bir dialog ister.
     */
     eylemler.push(
       <Button
@@ -506,7 +588,7 @@ export function UserDetailPage({
         variant="secondary"
         size="sm"
         leadingIcon={<ShieldOff size={16} />}
-        onClick={onSuspend}
+        onClick={() => yaptirimAc('suspend')}
       >
         Askıya al
       </Button>,
@@ -520,7 +602,7 @@ export function UserDetailPage({
         variant="danger"
         size="sm"
         leadingIcon={<Ban size={16} />}
-        onClick={() => setBanOnayiAcik(true)}
+        onClick={() => yaptirimAc('ban')}
       >
         Yasakla
       </Button>,
@@ -543,25 +625,43 @@ export function UserDetailPage({
       listings === undefined ? (
         <BolumHatasi hata={hatalar.listings} baslik="İlanlar yüklenemedi" onRetry={onRetry} />
       ) : (
-        <DataTable<Listing>
-          rows={listings.items}
-          columns={ILAN_SUTUNLARI}
-          /*
-            `mobileMode="cards"` bilerek kullanılmıyor: DataTable o modda
-            **her genişlikte** kart çiziyor (`DataTable.tsx`'te tablo dalından
-            önce koşulsuz `return`; `css.cards`'ta medya sorgusu yok), yani
-            masaüstü kolonunda da tablo yerine kart görünürdü. Raporlandı.
-          */
-          mobileMode="scroll"
-          onRowClick={(row) => onListingOpen(row)}
-          emptyState={
-            <EmptyState
-              variant="compact"
-              title="Bu hesabın hiç ilanı yok"
-              description="Kullanıcı henüz ilan oluşturmamış."
+        <div className={css.listingsTab}>
+          <DataTable<Listing>
+            rows={listings.items}
+            columns={ILAN_SUTUNLARI}
+            /*
+              `mobileMode="cards"` bilerek kullanılmıyor: DataTable o modda
+              **her genişlikte** kart çiziyor (`DataTable.tsx`'te tablo dalından
+              önce koşulsuz `return`; `css.cards`'ta medya sorgusu yok), yani
+              masaüstü kolonunda da tablo yerine kart görünürdü. Raporlandı.
+            */
+            mobileMode="scroll"
+            onRowClick={(row) => onListingOpen(row)}
+            emptyState={
+              <EmptyState
+                variant="compact"
+                title="Bu hesabın hiç ilanı yok"
+                description="Kullanıcı henüz ilan oluşturmamış."
+              />
+            }
+          />
+
+          {/*
+            Sayfalama yalnız `onListingsPageChange` bağlıysa (Faz 3 sonrası (b)
+            turunda eklendi): kanal yoksa ikinci sayfa istenemez ve ölü bir
+            kontrol çizmek — sonraki sayfa varmış gibi göstermek — kural ihlali.
+            `Pagination` `totalItems === 0` iken kendini hiç render etmiyor, bu
+            yüzden ilanı olmayan hesapta (boş durum) çubuk çıkmıyor.
+          */}
+          {onListingsPageChange !== undefined ? (
+            <Pagination
+              page={listings.page}
+              pageSize={Math.max(1, listings.pageSize)}
+              totalItems={listings.totalItems}
+              onPageChange={onListingsPageChange}
             />
-          }
-        />
+          ) : null}
+        </div>
       ),
   })
 
@@ -693,13 +793,20 @@ export function UserDetailPage({
             /*
               `security` = tam görünüm, `UserView` ister; `destek` onu görmez ve
               `detailed`'a düşer. Kart yetki bilmez — varyantı seçen sayfadır.
-
-              `activeSanction` **verilemiyor**: `UserDetailData` `UserSanction`
-              taşımıyor (bkz. component JSDoc'u → "Yaptırım kaydı verilemiyor").
-              Kart bu yüzden `security`'de yaptırımın yalnız tipini durumdan
-              türetecek; gerekçe ve bitiş tarihi bu ekranda yok.
             */
             variant={tamGorunum ? 'security' : 'detailed'}
+            /*
+              `activeSanction` artık verilebiliyor (Faz 3 sonrası (b) turu).
+              Kayıt **her iki varyanta** da güvenle geçiyor: `UserSanction.reason`
+              iç gerekçe metnidir ve `destek`e gösterilmemeli, ama gizlemeyi
+              kartın kendi `variant` mantığı yapıyor — `detailed` yalnız tip +
+              `endsAt` çiziyor, `reason`/`startsAt`/`createdByAdminId` yalnız
+              `security`'de. Yani kapı kartta; sayfa kaydı sansürlemek zorunda
+              değil (bkz. component JSDoc'u → "Yaptırım: aktif kayıt ve geçmiş
+              sicil"). Koşullu spread: `exactOptionalPropertyTypes` açıkken
+              opsiyonel alana `undefined` atanamaz (TS2375).
+            */
+            {...(veri.activeSanction !== undefined && { activeSanction: veri.activeSanction })}
             /*
               `onClick` verilmiyor: kart kullanıcı detayına götürür, biz zaten
               oradayız. Verilseydi kart bir `<button>`'a döner ve tıklanabilir
@@ -738,29 +845,132 @@ export function UserDetailPage({
                 */
                 onValueChange={(next) => {
                   const rol = ROL_DEGERLERI.find((r) => String(r) === next)
+                  /*
+                    `expectedRoleVersion` **gönderilmiyor**: `UserDetailData`/
+                    `UserAccount` bir sürüm damgası taşımıyor (raporlandı).
+                    Çakışma yine de sunucudan `roleChangeError` olarak dönebilir
+                    ve aşağıda gösteriliyor. Üçüncü argüman opsiyonel olduğu için
+                    `onRoleChange(rol)` sözleşmeyle uyumlu.
+                  */
                   if (rol !== undefined) onRoleChange(rol)
                 }}
               />
+
+              {/*
+                Rol değişikliği çakışması (`roleChangeConflict`, brifing 2.6):
+                sunucu reddettiyse `danger` bir `Alert` ile bildiriliyor —
+                `ModerationActionBar`'ın `decisionError`'ı render etmesiyle aynı
+                kalıp. Kapatılabilir **değil**: kalıcı bir sorunu kullanıcı
+                kapatıp unutmamalı (`AlertProps.dismissible`). Tekrar deneme yok:
+                aynı damga aynı çakışmayı üretir, doğru eylem yeniden yükleyip
+                bakmak — o da sayfanın işi.
+              */}
+              {roleChangeError !== undefined ? (
+                <Alert
+                  tone="danger"
+                  title={roleChangeError.title}
+                  description={roleChangeError.message}
+                />
+              ) : null}
             </div>
           ) : null}
 
           {/*
-            Onay dialog'u yalnız yetki varken DOM'a giriyor: yetkisiz kullanıcıya
-            kapalı bir dialog bile render etmenin gereği yok.
+            Yaptırım sicili (`sanctions`) yalnız **tam görünümde** (`UserView`)
+            render ediliyor: sicil `UserSanction.reason` içeriyor ve `destek`
+            (`UserViewProfile`) onu görmemeli. Sicili gösteren tek sözleşmeli
+            yüzey `SellerPanel`'in `risk` varyantı — wart'ı (yanıltıcı "İlan
+            sahibi" landmark'ı ve kartla çakışan kimlik bloğu) component JSDoc'unda
+            raporlandı. Sayaçlar hesabın kendi (süzülmemiş) toplamları: bu ekranın
+            bağlamı hesabın tamamı, `SellerPanel`'in bağlam-süzülmüş sayı uyarısı
+            burada tetiklenmiyor.
           */}
-          {yasaklanabilir ? (
-            <ConfirmDialog
-              open={banOnayiAcik}
-              tone="danger"
-              title={`${user.fullName} hesabını yasakla`}
-              description="Hesap süresiz olarak kapatılır: kullanıcı giriş yapamaz ve ilan veremez. Yaptırım sonradan kaldırılabilir ama hesap o ana kadar kapalı kalır."
-              confirmLabel="Yasakla"
-              onConfirm={() => {
-                setBanOnayiAcik(false)
-                onBan()
-              }}
-              onCancel={() => setBanOnayiAcik(false)}
+          {tamGorunum && veri.sanctions !== undefined ? (
+            <SellerPanel
+              user={user}
+              listingCount={user.listingCount}
+              activeListingCount={user.activeListingCount}
+              openReportCount={user.reportCount}
+              sanctions={veri.sanctions}
+              variant="risk"
             />
+          ) : null}
+
+          {/*
+            Yaptırım dialog'u yalnız aday varken (`yaptirimTuru !== undefined`)
+            DOM'a giriyor — buton yetkiliyse açılıyor, yani yetkisiz kullanıcıya
+            kapalı bir dialog bile render edilmiyor. Mount/unmount, Base UI'ın
+            odak koruma span'lerini popup'ın ömrüyle sınırlıyor.
+
+            `ConfirmDialog` yerine `Modal`: `ConfirmDialog`'un gövde slotu yok ve
+            burada gerekçe (+ askıda süre) toplanıyor — onaylanacak bir `SanctionInput`
+            var. Ban'ın süresiz olduğu ve kararın ağırlığı `description` + `danger`
+            onay butonu + zorunlu gerekçe ile taşınıyor; `closeOnBackdrop={false}`
+            doldurulmuş formun yanlış tıklamayla kaybolmasını önlüyor (`Escape`
+            yine açık).
+          */}
+          {yaptirimTuru !== undefined ? (
+            <Modal
+              open
+              size="sm"
+              title={
+                yaptirimTuru === 'suspend'
+                  ? `${user.fullName} hesabını askıya al`
+                  : `${user.fullName} hesabını yasakla`
+              }
+              description={
+                yaptirimTuru === 'suspend'
+                  ? 'Hesap belirtilen süre boyunca askıya alınır: kullanıcı giriş yapabilir ama ilan veremez. Süre dolunca askı kendiliğinden kalkar.'
+                  : 'Hesap süresiz olarak kapatılır: kullanıcı giriş yapamaz ve ilan veremez. Yaptırım sonradan kaldırılabilir ama hesap o ana kadar kapalı kalır.'
+              }
+              closeOnBackdrop={false}
+              onOpenChange={(acik) => {
+                if (!acik) setYaptirimTuru(undefined)
+              }}
+              footer={
+                <div className={css.dialogActions}>
+                  <Button variant="secondary" onClick={() => setYaptirimTuru(undefined)}>
+                    Vazgeç
+                  </Button>
+                  <Button
+                    variant={yaptirimTuru === 'ban' ? 'danger' : 'primary'}
+                    /* Gerekçe zorunlu; askıda ayrıca süre ≥ 1. Denetleyen çağıran (bu ekran). */
+                    disabled={!yaptirimGecerli}
+                    onClick={yaptirimOnayla}
+                  >
+                    {yaptirimTuru === 'suspend' ? 'Askıya al' : 'Yasakla'}
+                  </Button>
+                </div>
+              }
+            >
+              <div className={css.dialogBody}>
+                <Textarea
+                  label="Gerekçe"
+                  required
+                  helperText="İç gerekçe metni: denetim kaydına girer, kullanıcıya gösterilmez."
+                  rows={3}
+                  showCharacterCount
+                  maxLength={280}
+                  value={gerekce}
+                  onChange={(e) => setGerekce(e.target.value)}
+                />
+
+                {/*
+                  Süre yalnız askıda: ban süresizdir (`SanctionInput.durationDays`
+                  verilmez). `min={1}` — süresiz askı kavramsal olarak bir band.
+                */}
+                {yaptirimTuru === 'suspend' ? (
+                  <NumberInput
+                    label="Süre (gün)"
+                    required
+                    min={1}
+                    helperText="Süre dolunca askı kendiliğinden kalkar."
+                    value={sure}
+                    onValueChange={(next) => setSure(next)}
+                  />
+                ) : null}
+              </div>
+            </Modal>
           ) : null}
         </div>
 

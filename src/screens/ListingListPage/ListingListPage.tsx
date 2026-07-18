@@ -43,6 +43,7 @@ import type {
   DateRange,
   FilterDefinition,
   FilterValue,
+  ListingFilterOptions,
   ListingFilterValues,
   ListingListPageProps,
   NumberRange,
@@ -105,11 +106,12 @@ function bosFiltreler(): ListingFilterValues {
  * hiçbir şey yapmayan bir butondur; "filtreye uyan yok" durumunda ise tek doğru
  * adım odur.
  *
- * `cityCode`/`districtId`/`neighborhoodId`/`reviewerId` — çubukta karşılığı
- * olmayan alanlar (bkz. {@link FILTRE_TANIMLARI}) — **bilerek sayılıyor**:
- * kayıtlı bir görünümden veya URL'den gelebilirler ve geldiklerinde ortada
- * gerçekten temizlenecek bir filtre vardır. Yalnız çubuktakilere bakmak, o
- * kullanıcıya "hiç ilan yok" deyip çıkışsız bırakırdı.
+ * `cityCode`/`districtId`/`neighborhoodId`/`reviewerId` — çubukta ancak
+ * `filterOptions` verilince görünen alanlar (bkz. {@link filtreTanimlari}) —
+ * **her hâlde sayılıyor**: seçeneği gelmese bile kayıtlı bir görünümden veya
+ * URL'den değer gelebilir ve geldiğinde ortada gerçekten temizlenecek bir filtre
+ * vardır. Yalnız o an render edilen alanlara bakmak, o kullanıcıya "hiç ilan yok"
+ * deyip çıkışsız bırakırdı.
  */
 function filtreAktifMi(filters: ListingFilterValues): boolean {
   return aktifFiltreSayisi(filters) > 0
@@ -163,75 +165,105 @@ function secenekler<T extends string>(degerler: readonly T[], etiket: Record<T, 
 }
 
 /**
- * Ekranın filtre çubuğu.
+ * Tekli (`select`) bir filtre alanı — il/ilçe/mahalle/inceleyen için ortak kalıp.
  *
- * **Brifing 2.3'ün filtre listesinin tamamı değil — sözleşmenin verdiği kadarı.**
- * Karşılığı olmayanlar ve neden uydurulmadıkları:
- *
- * - **Alt kategori**: `ListingFilterValues`'ta alan yok. `domain/categoryTree.ts`
- *   eşlemeyi verebiliyor ama yazılacak yer yok.
- * - **İl / ilçe / mahalle**: alan var (`cityCode`, `districtId`,
- *   `neighborhoodId`) ama **seçenek kaynağı yok** — ne fixture, ne domain
- *   sabiti, ne prop. Ekran veri çekemez. Seçenekleri `state.data.items`'tan
- *   türetmek yanlış cevap olurdu: liste süzüldükçe seçenekler de daralır ve
- *   kullanıcı filtresini gevşetemez hâle gelir. Boş `options` ile bir Select
- *   koymak ise basınca boş liste açan bir kutu demek.
- * - **Güncellenme tarihi aralığı**: `dateRange` **tek** — hangi tarihe ait
- *   olduğunu söylemiyor. İlan tarihi varsayıldı (kolon sırası ve brifingin
- *   listesindeki sıra öyle); ikincisi için ayrı bir alan gerekir.
- * - **İnceleyen moderatör**: `reviewerId` alanı var ama admin listesi taşıyan
- *   prop yok — il/ilçe ile aynı boşluk.
- * - **Kayıtlı filtre görünümü**: `FilterBarProps.savedViewName`/`onSaveView`
- *   hazır ama `ListingListPageProps`'ta kanalı yok; görünümü kim saklar
- *   belirsiz.
- *
- * Hepsi rapor edildi, hiçbiri uydurulmadı.
- *
- * `searchable` bayrağı `FilterDefinition`'da yok: seçeneği sekizden fazla olan
- * `select` alanları FilterBar'da kendiliğinden aranabilir açılıyor (`ARAMA_ESIGI`).
- * Buradaki alanların hiçbiri `select` değil, hepsi `multiSelect` — eşik
- * ilgilendirmiyor.
+ * Değeri **tek bir string** (`cityCode`, `districtId`, `neighborhoodId`,
+ * `reviewerId`), yani `multiSelect` değil `select`: bir ilan tek bir ilde,
+ * tek bir inceleyende. `id` doğrudan `ListingFilterValues`'ın alan adı, böylece
+ * {@link filtreGuncelle}'de adıyla yazılabiliyor (hesaplanmış anahtar tuzağından
+ * kaçınmak için).
  */
-const FILTRE_TANIMLARI: FilterDefinition[] = [
-  {
-    id: 'categories',
-    label: LISTING_FIELD_LABEL.category,
-    type: 'multiSelect',
-    options: secenekler(Object.values(ListingCategory), LISTING_CATEGORY_LABEL),
-    placeholder: 'Tümü',
-  },
-  {
-    id: 'statuses',
-    label: LISTING_FIELD_LABEL.status,
-    type: 'multiSelect',
-    options: secenekler(Object.values(ListingStatus), LISTING_STATUS_LABEL),
-    placeholder: 'Tümü',
-  },
-  { id: 'price', label: LISTING_FIELD_LABEL.price, type: 'numberRange' },
-  {
-    id: 'currencies',
-    label: 'Para Birimi',
-    type: 'multiSelect',
-    options: secenekler(Object.values(Currency), CURRENCY_LABEL),
-    placeholder: 'Tümü',
-  },
-  {
-    id: 'sellerTypes',
-    label: 'Kimden',
-    type: 'multiSelect',
-    options: secenekler(Object.values(SellerType), SELLER_TYPE_LABEL),
-    placeholder: 'Tümü',
-  },
-  { id: 'dateRange', label: LISTING_FIELD_LABEL.listingDate, type: 'dateRange' },
-  {
-    id: 'promotionTypes',
-    label: LISTING_FIELD_LABEL.promotionFlags,
-    type: 'multiSelect',
-    options: secenekler(Object.values(PromotionType), PROMOTION_TYPE_LABEL),
-    placeholder: 'Tümü',
-  },
-  { id: 'reportedOnly', label: 'Yalnız şikayetli ilanlar', type: 'boolean' },
-]
+function tekliFiltre(id: string, label: string, options: SelectOption[]): FilterDefinition {
+  return { id, label, type: 'select', options, placeholder: 'Tümü' }
+}
+
+/**
+ * Ekranın filtre çubuğu — sözleşmenin verdiği kadarı.
+ *
+ * Sabit alanların yanına, `filterOptions` verildikçe **seçenek kaynağı gelen**
+ * dört filtre daha ekleniyor (Faz 3'te bu kaynak yoktu → filtreler hiç
+ * render edilmiyordu, RAPOR EDİLMİŞTİ):
+ *
+ * - **İl / ilçe / mahalle** (`cityCode`/`districtId`/`neighborhoodId`) ve
+ *   **İnceleyen moderatör** (`reviewerId`): alanları hep vardı ama seçenekleri
+ *   ekran veriden **türetemez** — süzülmüş liste yalnız o sayfadaki değerleri
+ *   içerir ve filtreledikçe seçenekler daralırdı. Artık `filterOptions` tam
+ *   listeyi taşıyor. **Seçenek kaynağı gelmemiş bir filtre yine render edilmez**
+ *   (`.length > 0` kapısı): boş `options` ile bir Select, basınca boş liste açan
+ *   bir kutu demek.
+ *
+ * Hâlâ karşılığı olmayanlar (rapor edildi, uydurulmadı):
+ *
+ * - **Alt kategori**: `ListingFilterValues`'ta alan yok.
+ * - **Güncellenme tarihi aralığı**: `dateRange` **tek** — hangi tarihe ait
+ *   olduğunu söylemiyor; ilan tarihi varsayıldı, ikincisi için ayrı alan gerekir.
+ * - **Kayıtlı filtre görünümü**: `FilterBarProps.savedViewName`/`onSaveView`
+ *   hazır ama `ListingListPageProps`'ta kanalı yok.
+ *
+ * Seçeneği {@link secenekler ARAMA_ESIGI}'nden (sekiz) fazla olan `select` alanı
+ * FilterBar'da kendiliğinden aranabilir açılır; il/ilçe/mahalle uzadıkça bu
+ * kendiliğinden devreye girer.
+ */
+function filtreTanimlari(secenekKaynaklari?: ListingFilterOptions): FilterDefinition[] {
+  const konumFiltreleri: FilterDefinition[] = []
+  if (secenekKaynaklari?.cities && secenekKaynaklari.cities.length > 0) {
+    konumFiltreleri.push(tekliFiltre('cityCode', 'İl', secenekKaynaklari.cities))
+  }
+  if (secenekKaynaklari?.districts && secenekKaynaklari.districts.length > 0) {
+    konumFiltreleri.push(tekliFiltre('districtId', 'İlçe', secenekKaynaklari.districts))
+  }
+  if (secenekKaynaklari?.neighborhoods && secenekKaynaklari.neighborhoods.length > 0) {
+    konumFiltreleri.push(tekliFiltre('neighborhoodId', 'Mahalle', secenekKaynaklari.neighborhoods))
+  }
+
+  const inceleyenFiltresi: FilterDefinition[] =
+    secenekKaynaklari?.reviewers && secenekKaynaklari.reviewers.length > 0
+      ? [tekliFiltre('reviewerId', 'İnceleyen', secenekKaynaklari.reviewers)]
+      : []
+
+  return [
+    {
+      id: 'categories',
+      label: LISTING_FIELD_LABEL.category,
+      type: 'multiSelect',
+      options: secenekler(Object.values(ListingCategory), LISTING_CATEGORY_LABEL),
+      placeholder: 'Tümü',
+    },
+    {
+      id: 'statuses',
+      label: LISTING_FIELD_LABEL.status,
+      type: 'multiSelect',
+      options: secenekler(Object.values(ListingStatus), LISTING_STATUS_LABEL),
+      placeholder: 'Tümü',
+    },
+    ...konumFiltreleri,
+    { id: 'price', label: LISTING_FIELD_LABEL.price, type: 'numberRange' },
+    {
+      id: 'currencies',
+      label: 'Para Birimi',
+      type: 'multiSelect',
+      options: secenekler(Object.values(Currency), CURRENCY_LABEL),
+      placeholder: 'Tümü',
+    },
+    {
+      id: 'sellerTypes',
+      label: 'Kimden',
+      type: 'multiSelect',
+      options: secenekler(Object.values(SellerType), SELLER_TYPE_LABEL),
+      placeholder: 'Tümü',
+    },
+    { id: 'dateRange', label: LISTING_FIELD_LABEL.listingDate, type: 'dateRange' },
+    {
+      id: 'promotionTypes',
+      label: LISTING_FIELD_LABEL.promotionFlags,
+      type: 'multiSelect',
+      options: secenekler(Object.values(PromotionType), PROMOTION_TYPE_LABEL),
+      placeholder: 'Tümü',
+    },
+    ...inceleyenFiltresi,
+    { id: 'reportedOnly', label: 'Yalnız şikayetli ilanlar', type: 'boolean' },
+  ]
+}
 
 /* ── Değer daraltma ──────────────────────────────────────────────────────────
  * `FilterValue` altı şeklin birleşimi ve FilterBar hangisini geri vereceğini
@@ -284,6 +316,16 @@ function filtreDegerleri(filters: ListingFilterValues): Record<string, FilterVal
     dateRange: filters.dateRange,
     promotionTypes: filters.promotionTypes,
     reportedOnly: filters.reportedOnly ?? false,
+    /*
+      Tekli seçim alanları: `undefined` iken FilterBar `''`e daraltıp placeholder
+      gösterir. Filtre yalnız `filterOptions` verildiğinde render edilir, ama
+      değeri her zaman yazmak zararsız — render edilmeyen alanın değerine
+      FilterBar bakmaz.
+    */
+    cityCode: filters.cityCode,
+    districtId: filters.districtId,
+    neighborhoodId: filters.neighborhoodId,
+    reviewerId: filters.reviewerId,
   }
 }
 
@@ -337,6 +379,42 @@ function filtreGuncelle(
 
     case 'reportedOnly':
       return { ...filters, reportedOnly: deger === true }
+
+    /*
+      Tekli seçim alanları. Her biri **adıyla** yazılıp siliniyor (hesaplanmış
+      anahtar `{ [id]: deger }` değer tipini denetletmezdi — AGENTS). Seçim
+      temizlenince (`deger` boş/`undefined`) alan `undefined` atanmaz, **silinir**:
+      `exactOptionalPropertyTypes` açıkken `cityCode?: string` alanına
+      `string | undefined` atanamaz (TS2375) ve "il kaldırıldı" ile "il boş" aynı
+      şey değil.
+    */
+    case 'cityCode': {
+      const sonraki: ListingFilterValues = { ...filters }
+      delete sonraki.cityCode
+      if (typeof deger === 'string' && deger !== '') sonraki.cityCode = deger
+      return sonraki
+    }
+
+    case 'districtId': {
+      const sonraki: ListingFilterValues = { ...filters }
+      delete sonraki.districtId
+      if (typeof deger === 'string' && deger !== '') sonraki.districtId = deger
+      return sonraki
+    }
+
+    case 'neighborhoodId': {
+      const sonraki: ListingFilterValues = { ...filters }
+      delete sonraki.neighborhoodId
+      if (typeof deger === 'string' && deger !== '') sonraki.neighborhoodId = deger
+      return sonraki
+    }
+
+    case 'reviewerId': {
+      const sonraki: ListingFilterValues = { ...filters }
+      delete sonraki.reviewerId
+      if (typeof deger === 'string' && deger !== '') sonraki.reviewerId = deger
+      return sonraki
+    }
 
     /** Tanımı olmayan id: bayat bir kayıtlı görünüm. Sessizce yok sayılır. */
     default:
@@ -486,12 +564,10 @@ function acikPromosyonlar(flags: PromotionFlags): PromotionType[] {
  * Ham `'22rem'` yazmak yerine tarayıcı hizalıyor; dar ekranda tablo zaten
  * kaydırılıyor.
  *
- * **`sortable` verilmiyor.** Brifing 2.3 sıralamayı eylem sayıyor ve
- * `ColumnDef.sortable` + `DataTableProps.sort`/`onSortChange` hazır, ama
- * `ListingListPageProps`'ta sıralamayı dışarı bildiren kanal **yok** ve ekran
- * veriyi kendi sıralayamaz (tablo `rows`'u sıralanmış bekler, sıralamayı yapan
- * sorgudur). Başlığı sıralanabilir göstermek, basınca hiçbir şey yapmayan bir
- * buton koymak olurdu.
+ * **`sortable` burada verilmiyor** — {@link sutunlar} onu `onSortChange`
+ * bağlıyken ekliyor. Sıralamayı **tablo yapmaz**: niyeti bildirir, sıralı veriyi
+ * `rows`'ta geri bekler (sorgunun işi). `onSortChange` verilmezse hiçbir başlık
+ * sıralanabilir olmaz — basınca hiçbir şey yapmayan ölü buton üretmemek için.
  */
 const SUTUNLAR: ColumnDef<Listing>[] = [
   {
@@ -662,6 +738,42 @@ const SUTUNLAR: ColumnDef<Listing>[] = [
 ]
 
 /**
+ * Sunucudan sıralı veri istenebilen sütunların kimlikleri.
+ *
+ * Tek bir alana bağlı ve doğal sırası olanlar: kimlik, başlık, fiyat, durum,
+ * tarihler ve sayaçlar. **Dışarıda kalanlar** dekoratif (`cover`) ya da bileşik
+ * (`category`, `location`, `seller` iki alanı birleştiriyor; `promotions` bir
+ * bayrak kümesi) — hangi alana göre sıralanacağı belirsiz olduğundan başlığı
+ * sıralanabilir göstermek yanıltıcı olurdu.
+ */
+const SIRALANABILIR_SUTUN_IDLERI: ReadonlySet<string> = new Set([
+  'listingNo',
+  'title',
+  'price',
+  'status',
+  'listingDate',
+  'updatedAt',
+  'viewCount',
+  'reportCount',
+])
+
+/**
+ * Kolonları döndürür; `siralanabilir` iken uygun başlıkları sıralama düğmesine
+ * çevirir.
+ *
+ * `false` iken {@link SUTUNLAR}'ın **kendisini** verir (yeni dizi üretmez) — Faz 3
+ * davranışı: `onSortChange` bağlı değilken hiçbir başlık buton olmaz. Sıralama
+ * kanalı bağlıyken yalnız {@link SIRALANABILIR_SUTUN_IDLERI}'ndeki sütunlar
+ * `sortable` alır.
+ */
+function sutunlar(siralanabilir: boolean): ColumnDef<Listing>[] {
+  if (!siralanabilir) return SUTUNLAR
+  return SUTUNLAR.map((sutun) =>
+    SIRALANABILIR_SUTUN_IDLERI.has(sutun.id) ? { ...sutun, sortable: true } : sutun,
+  )
+}
+
+/**
  * Satır seçim kutusunun erişilebilir etiketi.
  *
  * `DataTableProps.rowLabel` brifingden sapma olarak eklenmişti; sebebi tam olarak
@@ -682,14 +794,12 @@ const satirEtiketi = (row: Listing) => `${row.title} ilanını seç`
  * etmez, dolayısıyla `<h1>`'i yoktur: en üst başlığı `<h2>`. Sayfanın `<h1>`'i
  * kabuğundur.
  *
- * **Kart / tablo kararı ekranındır.** `DataTableProps.mobileMode`'un JSDoc'u
- * "dar ekranda ne olacağı" diyor ama component viewport'a **hiç bakmıyor**:
- * `mobileMode="cards"` verilirse 1440 pikselde de kart çiziyor (`DataTable.tsx`
- * dalı koşulsuz). Bu yüzden ekran iki dalı da render edip birini medya
- * sorgusuyla kapatıyor (`ListingListPage.css.ts` → `cardsView`/`tableView`).
- * Bedeli çift DOM; karşılığı, brifing 3.5'in istediği üç düzenin (mobil kart,
- * tablet kaydırmalı tablo, masaüstü tablo) gerçekten çalışması ve DOM'un
- * viewport'tan bağımsız kalarak ölçülebilmesi.
+ * **Kart / tablo kararı DataTable'ındır.** `mobileMode="cards"` artık viewport'a
+ * kendisi bakıyor: 48rem'in altında kart, üstünde tablo çiziyor ve iki dalı da
+ * DOM'da tutup birini medya sorgusuyla boyuyor. Ekran bu yüzden tek `DataTable`
+ * veriyor — eski `cardsView`/`tableView` çift-render telafisi kalktı. DOM
+ * viewport'tan bağımsız kaldığı için `{ hidden: true }` sorguları hâlâ iki dalı
+ * da görür; brifing 3.5'in üç düzeni (mobil kart, tablet/masaüstü tablo) çalışır.
  *
  * **Yetki kapıları eylemi gizler, kilitlemez.** Toplu onay/red/arşiv/atama
  * `availablePermissions`'a bakar; yetkisi olmayan kullanıcı butonu `disabled`
@@ -699,6 +809,12 @@ const satirEtiketi = (row: Listing) => `${row.title} ilanını seç`
  *
  * `filteredEmpty` `AsyncState`'in üyesi değil, {@link filtreAktifMi} ile
  * türetiliyor — gerekçesi orada.
+ *
+ * **Sıralama ve konum/inceleyen filtreleri opsiyonel kanallar** (Faz 3'te
+ * yoktu). `onSortChange` bağlıyken uygun başlıklar sıralama düğmesine döner
+ * ({@link sutunlar}); verilmezse hiçbir başlık buton olmaz. `filterOptions`
+ * verildikçe il/ilçe/mahalle ve inceleyen filtreleri seçenek üretir
+ * ({@link filtreTanimlari}); verilmezse o filtreler render edilmez.
  *
  * @example
  * <ListingListPage
@@ -719,6 +835,9 @@ export function ListingListPage({
   filters,
   selectedIds,
   availablePermissions,
+  filterOptions,
+  sort,
+  onSortChange,
   onFiltersChange,
   onSelectionChange,
   onPageChange,
@@ -731,6 +850,13 @@ export function ListingListPage({
 
   const eylemler = kullanilabilirEylemler(availablePermissions)
   const secilebilir = eylemler.length > 0
+
+  /*
+    `onSortChange` bağlı değilse hiçbir başlık sıralanabilir olmaz (ölü buton
+    yok). Bu yüzden `sort`/`onSortChange` ile `sortable` **tek karardan** çıkar:
+    kolonlar `onSortChange`'in varlığına göre türetiliyor.
+  */
+  const sutunListesi = sutunlar(onSortChange !== undefined)
 
   /**
    * Ekranda gösterilecek seçim.
@@ -784,7 +910,7 @@ export function ListingListPage({
       </div>
 
       <FilterBar
-        definitions={FILTRE_TANIMLARI}
+        definitions={filtreTanimlari(filterOptions)}
         values={filtreDegerleri(filters)}
         activeFilterCount={aktifFiltreSayisi(filters)}
         onChange={(id, deger) => onFiltersChange(filtreGuncelle(filters, id, deger))}
@@ -995,16 +1121,28 @@ export function ListingListPage({
         />
       ) : null}
 
-      {/* Mobil: kart görünümü. */}
-      <div className={css.cardsView}>
+      {/*
+        Tek DataTable, çift değil: `mobileMode="cards"` artık viewport'a kendisi
+        bakıyor (48rem'in altında kart, üstünde tablo — eşik AppShell/FilterBar
+        ile aynı) ve iki dalı da DOM'da tutup birini medya sorgusuyla boyuyor.
+        Ekranın eskiden yaptığı `cardsView`/`tableView` çift-render telafisi bu
+        yüzden kalktı; `renderMobileCard` kart dalını, `visualStyle`/`stickyHeader`/
+        `onRowClick` tablo dalını besliyor.
+      */}
+      <div className={css.listView}>
         <DataTable<Listing>
           rows={satirlar}
-          columns={SUTUNLAR}
+          columns={sutunListesi}
+          visualStyle="striped"
+          stickyHeader
           mobileMode="cards"
+          {...(sort !== undefined && { sort })}
+          {...(onSortChange !== undefined && { onSortChange })}
           selectable={secilebilir}
           selectedIds={gorunenSecim}
           onSelectionChange={onSelectionChange}
           rowLabel={satirEtiketi}
+          onRowClick={onListingOpen}
           renderMobileCard={(row) => (
             <ListingCard
               listing={row}
@@ -1021,21 +1159,6 @@ export function ListingListPage({
               })}
             />
           )}
-        />
-      </div>
-
-      {/* Tablet ve masaüstü: kaydırılabilir tablo. */}
-      <div className={css.tableView}>
-        <DataTable<Listing>
-          rows={satirlar}
-          columns={SUTUNLAR}
-          visualStyle="striped"
-          stickyHeader
-          selectable={secilebilir}
-          selectedIds={gorunenSecim}
-          onSelectionChange={onSelectionChange}
-          rowLabel={satirEtiketi}
-          onRowClick={onListingOpen}
         />
       </div>
 

@@ -47,43 +47,6 @@ export const backLink = style({
 })
 
 /**
- * Tablo görünümü — yalnız ≥48rem.
- *
- * `DataTable.mobileMode` bir **medya sorgusu değil**, düz bir prop: component
- * `cards` verildiğinde viewport'a bakmadan kart dalına giriyor (ölçüldü,
- * `DataTable.tsx`). Sayfanın viewport'u okumasının yolu da yok (repoda container
- * query yok, component saati/ortamı kendi okumamalı). Bu yüzden düzen seçimi
- * CSS'e bırakıldı: iki görünüm de DOM'da, ama **her viewport'ta yalnız biri
- * erişilebilirlik ağacında** — `display: none` alt ağacı addan da siler, yani
- * ekran okuyucu kullanıcısı listeyi iki kez duymaz. Aynı kalıbın repodaki
- * öncülü SidebarNav'ın ray + çekmece ikilisi.
- *
- * Maliyeti bilerek kabul edildi ve sınırlandı: **yalnız dolu liste** iki kez
- * çiziliyor. Yükleme iskeleti, boş durum ve hata bloğu tek bir DataTable'dan
- * geliyor (bkz. `.tsx`) — onların kart hâli zaten yok.
- */
-export const tableView = style({
-  display: 'none',
-
-  '@media': {
-    'screen and (min-width: 48rem)': {
-      display: 'block',
-    },
-  },
-})
-
-/** Kart görünümü — yalnız <48rem. `tableView`'ın simetriği; gerekçe orada. */
-export const cardView = style({
-  display: 'block',
-
-  '@media': {
-    'screen and (min-width: 48rem)': {
-      display: 'none',
-    },
-  },
-})
-
-/**
  * Kullanıcı hücresi: avatar + ad + firma. `onUserOpen` bağlı olduğu için
  * `<button>`.
  *
@@ -188,6 +151,32 @@ export const actions = style({
   display: 'flex',
   flexWrap: 'wrap',
   gap: vars.space[2],
+})
+
+/**
+ * Eylemler hücresi: buton satırı + (varsa) rol çakışması uyarısı alt alta.
+ *
+ * `actions` yatay bir flex; çakışma `Alert`'i onun **altına** düşmeli, arasına
+ * değil. Bu yüzden hücre bir grid kabı: `actions` bloğu ve `Alert` iki ayrı satır.
+ * Uyarı bir kabaran flex öğesi olsaydı butonların arasına sıkışıp okunmazdı.
+ */
+export const actionsCell = style({
+  display: 'grid',
+  gap: vars.space[2],
+  minWidth: 0,
+})
+
+/**
+ * Yaptırım (askıya alma / banlama) dialog'unun gövdesi: süre alanı + gerekçe
+ * `Textarea`'sı alt alta.
+ *
+ * `roleDialogBody` ile aynı gerekçe — `ConfirmDialog`'un gövde slotu yok, form
+ * toplayan yaptırım dialog'u bu yüzden `Modal` + kendi alanları.
+ */
+export const sanctionBody = style({
+  display: 'grid',
+  gap: vars.space[4],
+  minInlineSize: 0,
 })
 
 /* ── Mobil kart ──────────────────────────────────────────────────────────── */

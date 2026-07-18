@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileSearch, RefreshCw } from 'lucide-react'
+import { ArrowUpRight, Download, FileSearch, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router'
 import { Alert } from '../../components/primitives/Alert'
 import { Badge } from '../../components/primitives/Badge'
@@ -16,7 +16,7 @@ import {
   AUDIT_ENTITY_TYPE_LABEL,
 } from '../../domain/labels'
 import { formatDateTime } from '../../utils/formatDateTime'
-import { AdminRole, type AuditLogEntry, type Paginated } from '../../types/domain'
+import { AdminPermission, AdminRole, type AuditLogEntry, type Paginated } from '../../types/domain'
 import type {
   AuditLogFilters,
   AuditLogPageProps,
@@ -44,6 +44,8 @@ const ALAN = {
   query: 'query',
   roles: 'roles',
   entityTypes: 'entityTypes',
+  actorIds: 'actorIds',
+  actions: 'actions',
   dateRange: 'dateRange',
 } as const satisfies Record<keyof AuditLogFilters, string>
 
@@ -95,23 +97,43 @@ const VARLIK_SECENEKLERI: SelectOption[] = VARLIK_TIPLERI.map((tip) => ({
 }))
 
 /**
- * Filtre alanları.
+ * Eylem filtresi seçenekleri — `AdminPermission` uzayından türetiliyor.
  *
- * **Sözleşme boşluğu:** brifing 2.10 "Tarih, rol, **kullanıcı** ve **eyleme**
- * göre filtreleme" istiyor, ama `AuditLogFilters` yalnız `query` / `roles` /
- * `entityTypes` / `dateRange` taşıyor — aktör ve eylem için ayrı kanal yok.
- * Serbest metin (`query`) ikisinin de yerini **yaklaşık** tutuyor ve placeholder
- * bunu açıkça söylüyor; uydurma prop eklenmedi (`actorIds`, `actions`).
- * `entityTypes` ise tersi: sözleşmede var, brifingin eylem listesinde yok —
- * fixture'ın altı varlık tipini kapsaması onun filtrelenmek için orada olduğunu
- * gösteriyor.
+ * Gerekçe `fixtures/audit.ts` ile aynı: **audit'e giren her eylem tam olarak bir
+ * izin kapısından geçmiştir**, dolayısıyla `action` kodları `AdminPermission`
+ * değerleridir (`listing:reject`, `user:suspend`, `theme:setDefault`) ve
+ * `ADMIN_PERMISSION_LABEL` 33 kodun hepsini Türkçeleştiriyor. Liste elle
+ * yazılmıyor, `Object.values(AdminPermission)` ile türetiliyor: enum'a yeni bir
+ * izin eklendiğinde seçenek kendiliğinden geliyor (`ROL_SECENEKLERI` ile aynı
+ * kalıp). Tam uzay veriliyor, yalnız fixture'da görünen kodlar değil — ekran
+ * süzmüyor, seçenekler sunucunun süzeceği eylem kümesidir ve bir eylemin bugün
+ * kaydı olmaması onu filtrelenemez yapmaz.
  */
-const FILTRE_TANIMLARI: FilterDefinition[] = [
+const EYLEM_SECENEKLERI: SelectOption[] = Object.values(AdminPermission).map((izin) => ({
+  value: izin,
+  label: ADMIN_PERMISSION_LABEL[izin],
+}))
+
+/**
+ * Filtre alanları — aktör hariç sabit olan taban.
+ *
+ * Brifing 2.10'un dört boyutu (Faz 3 sonrası (b) turunda tamamı bağlandı):
+ * **tarih** (`dateRange`), **rol** (`roles`), **kullanıcı** (`actorIds`) ve
+ * **eylem** (`actions`). Aktör filtresi tabanda değil, çünkü seçenekleri
+ * (`actorOptions`) prop'tan gelir — ekran kimlikleri adlara çeviremez (veri
+ * çekmez) — ve `actorOptions` verilmedikçe render edilmez; bileşen içinde
+ * koşullu eklenir ({@link AuditLogPage}). `entityTypes` brifingin eylem
+ * listesinde yok ama sözleşmede var; fixture'ın altı varlık tipini kapsaması
+ * onun filtrelenmek için orada olduğunu gösteriyor. Serbest metin (`query`)
+ * artık aktör/eylemin yerine değil, özet ve varlık kimliği gibi tipli kanalı
+ * olmayan alanların yaklaşık araması.
+ */
+const FILTRE_TANIMLARI_TABAN: FilterDefinition[] = [
   {
     id: ALAN.query,
     type: 'text',
     label: 'Ara',
-    placeholder: 'Admin adı, eylem kodu veya varlık kimliği',
+    placeholder: 'Admin adı, özet veya varlık kimliği',
   },
   {
     id: ALAN.roles,
@@ -119,6 +141,13 @@ const FILTRE_TANIMLARI: FilterDefinition[] = [
     label: 'Rol',
     options: ROL_SECENEKLERI,
     placeholder: 'Tüm roller',
+  },
+  {
+    id: ALAN.actions,
+    type: 'multiSelect',
+    label: 'Eylem',
+    options: EYLEM_SECENEKLERI,
+    placeholder: 'Tüm eylemler',
   },
   {
     id: ALAN.entityTypes,
@@ -129,6 +158,27 @@ const FILTRE_TANIMLARI: FilterDefinition[] = [
   },
   { id: ALAN.dateRange, type: 'dateRange', label: 'Tarih aralığı' },
 ]
+
+/**
+ * `actorOptions` verildiğinde aktör filtresini `roles`'un hemen ardına ekler.
+ *
+ * `roles` "hangi rol", `actorIds` "hangi kişi" — ikisi yan yana okunur. Seçenek
+ * adları (`id → ad`) sayfa katmanından gelir; verilmezse aktör filtresi çıkmaz.
+ */
+function filtreTanimlari(actorOptions: SelectOption[] | undefined): FilterDefinition[] {
+  if (actorOptions === undefined) return FILTRE_TANIMLARI_TABAN
+  return [
+    ...FILTRE_TANIMLARI_TABAN.slice(0, 2),
+    {
+      id: ALAN.actorIds,
+      type: 'multiSelect',
+      label: 'Kullanıcı',
+      options: actorOptions,
+      placeholder: 'Tüm kullanıcılar',
+    },
+    ...FILTRE_TANIMLARI_TABAN.slice(2),
+  ]
+}
 
 /* ── `FilterValue` → `AuditLogFilters` daraltması ────────────────────────────
  * `FilterBar` altı şeklin birleşimini (`FilterValue`) geri veriyor; hangi şeklin
@@ -152,6 +202,16 @@ const VARLIK_DEGERLERI: readonly string[] = VARLIK_TIPLERI
 
 const varlikTipleriniOku = (deger: FilterValue): VarlikTipi[] =>
   Array.isArray(deger) ? deger.filter((x): x is VarlikTipi => VARLIK_DEGERLERI.includes(x)) : []
+
+/**
+ * Serbest string dizisi filtrelerini (aktör, eylem) okur.
+ *
+ * `roles`/`entityTypes`'ın aksine kapalı bir küme yok: `actorId` her admini
+ * gösterebilir, `action` sözlükte olmayan bir sunucu kodu (`auth:login`)
+ * taşıyabilir — daraltma yalnız "dize mi" diye sorar, üyelik değil.
+ */
+const dizeDizisiOku = (deger: FilterValue): string[] =>
+  Array.isArray(deger) ? deger.filter((x): x is string => typeof x === 'string') : []
 
 /**
  * Tek bir alanın değişimini `AuditLogFilters`e yazar.
@@ -180,6 +240,25 @@ function filtreGuncelle(mevcut: AuditLogFilters, id: string, deger: FilterValue)
       sonraki.entityTypes = varlikTipleriniOku(deger)
       return sonraki
 
+    /*
+      Aktör/eylem **opsiyonel** alanlar: boşaldıklarında `query` gibi `undefined`
+      atanamaz (TS2375), **silinirler** — "seçim yok" ile "hepsi" audit için aynı
+      şey ve fixtures'ın "verilmemiş = hepsi" sözleşmesiyle örtüşüyor.
+    */
+    case ALAN.actorIds: {
+      const secili = dizeDizisiOku(deger)
+      if (secili.length === 0) delete sonraki.actorIds
+      else sonraki.actorIds = secili
+      return sonraki
+    }
+
+    case ALAN.actions: {
+      const secili = dizeDizisiOku(deger)
+      if (secili.length === 0) delete sonraki.actions
+      else sonraki.actions = secili
+      return sonraki
+    }
+
     case ALAN.dateRange:
       sonraki.dateRange = tarihAraligiOku(deger)
       return sonraki
@@ -200,6 +279,8 @@ function filtreGuncelle(mevcut: AuditLogFilters, id: string, deger: FilterValue)
 const filtreAktifMi = (filters: AuditLogFilters): boolean =>
   (filters.query ?? '') !== '' ||
   filters.roles.length > 0 ||
+  (filters.actorIds?.length ?? 0) > 0 ||
+  (filters.actions?.length ?? 0) > 0 ||
   filters.entityTypes.length > 0 ||
   filters.dateRange.from !== undefined ||
   filters.dateRange.to !== undefined
@@ -221,18 +302,18 @@ function korelasyonKimligi(metadata: Record<string, unknown>): string | undefine
  * Kabuk da değildir — `AppShell`/`TopBar`/`SidebarNav`/`PageHeader` render etmez,
  * sayfanın `<h1>`'i onlarındır; buradaki en üst başlık `<h2>`.
  *
- * ## `onEntryOpen` JSON detayını açar; "ilgili varlığa gitme" bugün YOK
+ * ## İki eylem, iki kanal: `onEntryOpen` detayı açar, `onEntityOpen` ekrandan çıkar
  *
  * Brifing 2.10 iki ayrı eylem istiyor — "JSON detayını açma" ve "**İlgili
- * varlığa gitme**" — ama sözleşmede tek bir kanal var: `onEntryOpen(entry)`.
- * Bir kanal iki işi yapamaz: biri çekmece açar (kayıtta kalır), öteki rota
- * değiştirir (ekrandan ayrılır).
+ * varlığa gitme**" — ve Faz 3 sonrası (b) turunda ikisinin de kanalı var, artık
+ * karışmıyorlar: `onEntryOpen(entry)` çekmeceyi açar (kayıtta kalır),
+ * `onEntityOpen(entry)` `entityType`+`entityId` ile ilan/kullanıcı/şikayet
+ * detayına götürür (rota değişir, **ekrandan ayrılır**). Bir kanal iki işi
+ * yapamazdı; Faz 3'te tek `onEntryOpen` vardı ve boşluk **raporlanmıştı**.
  *
- * Ayrımı `AuditLogPageProps.onEntryOpen`'in kendi JSDoc'u karara bağlıyor ve bu
- * ekran onu uyguluyor: **kanal JSON detayını açar**; "varlığa gitme" için ayrı
- * bir `onEntityOpen(entry)` gerekir, imzalar donduruldu ve boşluk raporlandı —
- * bugün o eylem bu ekranda **yok**. Uydurma bir buton eklenmedi: basınca hiçbir
- * şey yapmayan "İlgili varlığa git", olmayan butondan kötüdür.
+ * `onEntityOpen` **opsiyonel**: verilmezse çekmecenin alt şeridindeki "İlgili
+ * varlığa git" butonu hiç çıkmaz — basınca hiçbir şey yapmayan buton, olmayan
+ * butondan kötüdür.
  *
  * Çekmecenin **açıklığı** yine de burada, `useState`'te — aynı JSDoc'un
  * "açıklık görüntü state'idir, prop değil" cümlesi bunu söylüyor ve sözleşmede
@@ -272,14 +353,17 @@ function korelasyonKimligi(metadata: Record<string, unknown>): string | undefine
  * bayatladığında sunucunun verdiği 403'ün karşılığıdır. Tekrar deneme butonu
  * yok: `retryable` tip düzeyinde `false`, aynı 403 aynı 403'ü verir.
  *
- * ## Kanalsız kalan üç gereksinim — uydurulmadı, raporlandı
+ * ## Faz 3'te kanalsız kalan üç gereksinim — (b) turunda bağlandı
  *
- * - **"Yetkiye göre dışa aktarma"** (brifing 2.10): ne `onExport` var ne de
- *   yetkiyi okuyacak bir izin listesi. İkisi birden gerekir; biri olmadan öteki
- *   işe yaramaz — yetkisiz kullanıcıya `disabled` buton değil, hiç buton.
- * - **"İlgili varlığa gitme"**: yukarıdaki `onEntryOpen` bölümü.
- * - **"Kullanıcı ve eyleme göre filtreleme"**: `AuditLogFilters`'ta aktör/eylem
- *   kanalı yok; serbest metin (`query`) ikisinin de yerini yaklaşık tutuyor.
+ * - **"Yetkiye göre dışa aktarma"** (brifing 2.10): `onExport` eklendi ve
+ *   **opsiyonel**. Yetki kapısı sunucuda: `onExport` verilmedikçe dışa aktar
+ *   butonu render edilmez — yetkisiz kullanıcıya `disabled` buton değil, hiç
+ *   buton.
+ * - **"İlgili varlığa gitme"**: `onEntityOpen`, yukarıdaki bölüm.
+ * - **"Kullanıcı ve eyleme göre filtreleme"**: `AuditLogFilters`'a `actorIds`
+ *   (kullanıcı) ve `actions` (eylem) eklendi; ikisi de `multiSelect` filtre.
+ *   `query` artık ikisinin yerine değil, tipli kanalı olmayan alanların
+ *   (özet, varlık kimliği) yaklaşık araması.
  *
  * ## Sıralama yok
  *
@@ -295,7 +379,10 @@ function korelasyonKimligi(metadata: Record<string, unknown>): string | undefine
  *   onFiltersChange={setFiltreler}
  *   onPageChange={setSayfa}
  *   onEntryOpen={(entry) => izle('audit_detay_acildi', entry.id)}
+ *   onEntityOpen={(entry) => git(entry.entityType, entry.entityId)}
  *   onRetry={refetch}
+ *   actorOptions={adminSecenekleri}
+ *   onExport={dosyayaAktar}
  * />
  */
 export function AuditLogPage({
@@ -304,7 +391,10 @@ export function AuditLogPage({
   onFiltersChange,
   onPageChange,
   onEntryOpen,
+  onEntityOpen,
   onRetry,
+  actorOptions,
+  onExport,
 }: AuditLogPageProps) {
   /** Detayı açık olan kayıt. Görüntü state'i — çekilen veri değil. */
   const [detayKaydi, setDetayKaydi] = useState<AuditLogEntry | null>(null)
@@ -470,7 +560,25 @@ export function AuditLogPage({
 
   return (
     <div className={css.root}>
-      <h2 className={css.baslik}>Audit kayıtları</h2>
+      {/*
+        Başlık ve "Dışa aktar" aynı satırda. Buton **opsiyonel**: `onExport`
+        verilmedikçe (yetki kapısı sunucuda) hiç render edilmez — sonuçsuz buton
+        sunmamak için. Mevcut filtreyle eşleşen kayıtları çağıran dışa aktarır;
+        ne aktardığını (CSV/JSON) da o belirler.
+      */}
+      <div className={css.baslikSatiri}>
+        <h2 className={css.baslik}>Audit kayıtları</h2>
+        {onExport !== undefined ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            leadingIcon={<Download size={16} />}
+            onClick={onExport}
+          >
+            Dışa aktar
+          </Button>
+        ) : null}
+      </div>
 
       {state.status === 'success' && state.stale === true ? (
         <Alert
@@ -495,10 +603,12 @@ export function AuditLogPage({
       ) : null}
 
       <FilterBar
-        definitions={FILTRE_TANIMLARI}
+        definitions={filtreTanimlari(actorOptions)}
         values={{
           [ALAN.query]: filters.query ?? '',
           [ALAN.roles]: filters.roles,
+          [ALAN.actorIds]: filters.actorIds ?? [],
+          [ALAN.actions]: filters.actions ?? [],
           [ALAN.entityTypes]: filters.entityTypes,
           [ALAN.dateRange]: filters.dateRange,
         }}
@@ -558,10 +668,27 @@ export function AuditLogPage({
         onOpenChange={(acik) => {
           if (!acik) setDetayKaydi(null)
         }}
-        /* `footer` verilmiyor: brifing 2.10'un "İlgili varlığa gitme" eylemi bu
-           şeridin doğal yeri olurdu ama kanalı yok (`onEntryOpen` JSON detayına
-           bağlandı, `onEntityOpen` sözleşmede tanımlı değil — RAPOR EDİLDİ).
-           Basınca hiçbir şey yapmayan buton, olmayan butondan kötü. */
+        /*
+          Alt şerit brifing 2.10'un "İlgili varlığa gitme" eyleminin doğal yeri.
+          `onEntityOpen` **opsiyonel**: verilmezse şerit hiç render edilmez —
+          basınca hiçbir şey yapmayan buton, olmayan butondan kötü. `onEntryOpen`
+          (çekmece açar) ile karıştırma: bu buton `entityType`+`entityId` ile
+          ekrandan ayrılır. `detayKaydi` null iken de çıkmaz — kaydı yoksa
+          gidilecek varlık da yok.
+        */
+        footer={
+          onEntityOpen !== undefined && detayKaydi !== null ? (
+            <Button
+              variant="secondary"
+              leadingIcon={<ArrowUpRight size={16} />}
+              onClick={() => {
+                if (detayKaydi !== null) onEntityOpen(detayKaydi)
+              }}
+            >
+              İlgili varlığa git
+            </Button>
+          ) : undefined
+        }
       >
         {detayKaydi === null ? null : (
           <div className={css.detayGovdesi}>

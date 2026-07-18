@@ -2,24 +2,6 @@ import { globalStyle, style } from '@vanilla-extract/css'
 import { vars } from '@/tokens/contract.css'
 
 /**
- * Kart görünümünün tablo görünümüne bıraktığı genişlik.
- *
- * AppShell'in menü kolonu kırılımıyla (`48rem`) ve FilterBar'ın geniş alan
- * kırılımıyla birebir aynı: ekranın kart/tablo kararı ile kabuğun menü kararı
- * aynı anda düşmezse, menü açılırken içerik hâlâ kart görünümünde kalır ve
- * kullanıcı iki farklı düzen değişimini arka arkaya görür.
- *
- * **Neden CSS, neden JS değil:** repoda container query yok ve `matchMedia`
- * ile karar veren tek bir component de yok. JS ile seçmek DOM'u viewport'a
- * bağımlı kılardı — test tarayıcısının gerçek viewport'u (414px) Storybook'un
- * viewport global'iyle aynı olmayabildiği için (AGENTS) `Desktop` story'sinin
- * play'i tabloyu hiç bulamazdı. CSS ile iki dal da DOM'da durur, `{ hidden:
- * true }` sorguları viewport'tan bağımsız ölçer; boyanan dalı medya sorgusu
- * seçer.
- */
-const TABLO_KIRILIMI = 'screen and (min-width: 48rem)'
-
-/**
  * `isolation` veya `transform` **yok** ve olmamalı: BulkActionBar'ın `floating`
  * varyantı `position: fixed` ile viewport'a çıpalanıyor; burada bir dönüşüm
  * (veya `filter`/`will-change`) yaratmak `fixed`'i bu kutuya bağlar ve çubuk
@@ -126,46 +108,21 @@ export const searchField = style({
   minWidth: 0,
 })
 
-/* ── İki görünüm ─────────────────────────────────────────────────────────────
- * DataTable'ın `mobileMode` prop'u viewport'a **bakmıyor**: `"cards"` verilirse
- * 1440 pikselde de kart çiziyor (bkz. ListingListPage.tsx'teki not). Kart/tablo
- * kararını bu yüzden ekran veriyor ve iki dalı da render edip birini medya
- * sorgusuyla kapatıyor. `display: none` burada doğru araç — dal boyanmadığı gibi
- * erişilebilirlik ağacından da tamamen çıkmalı, yoksa ekran okuyucu kullanıcısı
- * aynı 12 ilanı iki kez gezer.
- */
-
-export const cardsView = style({
-  minWidth: 0,
-
-  '@media': {
-    [TABLO_KIRILIMI]: { display: 'none' },
-  },
-})
-
 /**
- * `isolation: 'isolate'` — tablonun yapışkan başlığı ile ekranın yüzen çubuğu
- * aynı yığın bağlamında yarışmasın diye.
+ * Tek DataTable'ın stacking context'i.
  *
- * DataTable'ın `stickyHeader`'ı `z.sticky` kullanıyor; BulkActionBar'ın
- * `floating` varyantı da `z.sticky` kullanıyor ve ikisi kök yığın bağlamında
- * eşitken kazananı DOM sırası belirliyor — yani çubuğun tablonun başlığının
- * üstünde kalması bir tesadüfe (JSX'te sonra yazılmış olmasına) bağlı kalırdı.
- * Yalıtım, başlığın z-index'ini bu kutunun içinde tutar. (RolePermissionMatrix'in
- * kaydırma kabına konan `isolation` ile aynı çözüm.)
- *
- * Çubuk bu kutunun **dışında** olduğu için `position: fixed`'i etkilenmiyor —
- * yalıtım yığın bağlamı yaratır, `fixed`'in çıpasını değiştirmez (onu yalnız
- * `transform`/`filter`/`will-change` yapar ve burada hiçbiri yok).
+ * `mobileMode="cards"` artık kart/tablo kararını kendi verdiği için ekran çift
+ * render etmiyor; ama tablonun yapışkan başlığı (`z.sticky`) ile BulkActionBar'ın
+ * `floating` varyantı (`z.sticky`) hâlâ kök yığın bağlamında eşit kalırsa kazananı
+ * DOM sırası belirlerdi. `isolation: 'isolate'` başlığın z-index'ini bu kutunun
+ * içinde tutuyor — eski `tableView`'ın taşıdığı yalıtımın tek dala inmiş hâli.
+ * Çubuk bu kutunun **dışında** (`position: fixed` viewport'a çıpalı), yalıtım onu
+ * etkilemiyor. `minWidth: 0`: grid öğesinin `min-content` tabanı yerine tablo
+ * kendi scroller'ında kaydırılabilsin diye.
  */
-export const tableView = style({
-  display: 'none',
+export const listView = style({
   minWidth: 0,
   isolation: 'isolate',
-
-  '@media': {
-    [TABLO_KIRILIMI]: { display: 'block' },
-  },
 })
 
 /* ── Hücreler ─────────────────────────────────────────────────────────────── */

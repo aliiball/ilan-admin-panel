@@ -37,6 +37,11 @@ const MARKA_ADI = 'İlan Yönetim Paneli'
 const MARKA_CUMLESI = 'Gayrimenkul ilanlarının moderasyonu, denetimi ve operasyonu tek panelde.'
 
 /**
+ * Destek koduna eşlik eden sabit metin; kodun kendisi çağıranın `errorCode`'u.
+ */
+const DESTEK_KODU_ETIKETI = 'Destek kodu:'
+
+/**
  * Dört mesaj modunun başlığı, açıklaması, eylem etiketi ve ikonu.
  *
  * `forbidden` ve `fatalError`'ın eylemleri **kasten farklı**: 403'ü tekrar
@@ -76,6 +81,7 @@ interface MesajBloguProps {
   mode: Exclude<AuthScreenProps['mode'], 'login'>
   loading: boolean
   error?: string
+  errorCode?: string
   onPrimaryAction?: () => void
 }
 
@@ -86,8 +92,19 @@ interface MesajBloguProps {
  * içindeki bir düzen parçası (emsal: SellerPanel'in `YaptirimKaydi`'ı). Dışa da
  * açılmıyor; `index.ts` yalnız AuthScreen'i veriyor.
  */
-function MesajBlogu({ mode, loading, error, onPrimaryAction }: MesajBloguProps) {
+function MesajBlogu({ mode, loading, error, errorCode, onPrimaryAction }: MesajBloguProps) {
   const { baslik, aciklama, eylemEtiketi, Ikon } = MOD_ICERIGI[mode]
+
+  /*
+    Destek kodu yalnız `forbidden`/`fatalError`'da anlamlı (sözleşme): oturum
+    dolması ve 404 bir sunucu istisnası taşımaz, destek ekibine okunacak bir
+    referans da üretmez. Kod boşsa yok sayılır — "Destek kodu:" yazıp ardını
+    boş bırakmak kullanıcıya okuyacak bir şey vaat edip vermemek olurdu.
+  */
+  const destekKodu =
+    (mode === 'forbidden' || mode === 'fatalError') && errorCode !== undefined && errorCode !== ''
+      ? errorCode
+      : undefined
 
   return (
     <div className={css.message}>
@@ -99,6 +116,17 @@ function MesajBlogu({ mode, loading, error, onPrimaryAction }: MesajBloguProps) 
 
       {/* Sunucunun somut sebebi varsa modun genel cümlesinin yerine geçer. */}
       <p className={css.description}>{error !== undefined && error !== '' ? error : aciklama}</p>
+
+      {/*
+        Destek kodu, hata mesajının yanında. Mono yazı basamak karışıklığını
+        önler (0/O, 1/l) ve `user-select: all` tek tıkla seçtirir — kullanıcı
+        kodu destek ekibine okuyabilmeli. Emsal: ErrorState'in `code`/`codeValue`'i.
+      */}
+      {destekKodu !== undefined ? (
+        <p className={css.supportCode}>
+          {DESTEK_KODU_ETIKETI} <span className={css.supportCodeValue}>{destekKodu}</span>
+        </p>
+      ) : null}
 
       {onPrimaryAction !== undefined ? (
         <div className={css.messageAction}>
@@ -158,10 +186,11 @@ function MesajBlogu({ mode, loading, error, onPrimaryAction }: MesajBloguProps) 
  * **`error` bir kez yazılır.** Giriş hatasında mesaj `danger` bir `Alert`'e
  * gider (`role="alert"` — ekran okuyucu anında duyar, kullanıcı sekmeyle oraya
  * varana kadar beklemez); alanların kendi `error` prop'una da verilseydi aynı
- * cümle üç kez okunurdu. Alanlar bunun yerine `aria-invalid` ile işaretlenir.
- * Bunun bir bedeli var ve raporlandı: `InputProps` "mesajsız geçersiz"i ifade
- * edemiyor (`data-invalid` yalnız `error` doluyken doğuyor), dolayısıyla kutular
- * kırmızı kenarlık **almıyor**. Dört mesaj modunda `error`, modun sabit
+ * cümle üç kez okunurdu. Alanlar bunun yerine `invalid` ile işaretlenir: mesajsız
+ * geçersiz — kırmızı kenarlık (`data-invalid`) + `aria-invalid`, ama alan altına
+ * metin basmaz. Faz 3'e kadar bu ifade edilemiyordu (`data-invalid` yalnız `error`
+ * doluyken doğuyor, kutular kırmızı kenarlık almıyordu); `InputProps.invalid`
+ * eklendi ve boşluk **KAPANDI**. Dört mesaj modunda `error`, modun sabit
  * açıklamasının yerine geçer: sunucunun söylediği somut sebep ("Bu ilanı görme
  * yetkiniz yok") genel cümleden iyidir.
  *
@@ -175,6 +204,7 @@ export function AuthScreen({
   mode,
   loading = false,
   error,
+  errorCode,
   onSubmit,
   onPrimaryAction,
 }: AuthScreenProps) {
@@ -231,9 +261,11 @@ export function AuthScreen({
 
               <div className={css.fields}>
                 {/*
-                  `aria-invalid` alanların tek geçersizlik işareti: mesaj yukarıda,
-                  Alert'te. `error` prop'u verilseydi aynı cümle kutunun altında
-                  ikinci ve üçüncü kez yazılırdı.
+                  `invalid` (mesajsız geçersiz) alanların tek geçersizlik
+                  işareti: mesaj yukarıda, Alert'te. `error` prop'u verilseydi
+                  aynı cümle kutunun altında ikinci ve üçüncü kez yazılırdı;
+                  `invalid` ise kutuyu kırmızıya boyar (data-invalid) ve
+                  `aria-invalid` verir ama alan altına metin basmaz.
 
                   İkisi birden işaretleniyor çünkü sunucu hangisinin yanlış
                   olduğunu söylemez — söylemesi de istenmez: yalnız parolayı
@@ -247,7 +279,7 @@ export function AuthScreen({
                   inputMode="email"
                   required
                   disabled={loading}
-                  {...(hataMesaji !== undefined && { 'aria-invalid': true })}
+                  invalid={hataMesaji !== undefined}
                 />
 
                 <Input
@@ -257,7 +289,7 @@ export function AuthScreen({
                   autoComplete="current-password"
                   required
                   disabled={loading}
-                  {...(hataMesaji !== undefined && { 'aria-invalid': true })}
+                  invalid={hataMesaji !== undefined}
                 />
               </div>
 
@@ -274,6 +306,7 @@ export function AuthScreen({
               mode={mode}
               loading={loading}
               {...(hataMesaji !== undefined && { error: hataMesaji })}
+              {...(errorCode !== undefined && errorCode !== '' && { errorCode })}
               {...(onPrimaryAction !== undefined && { onPrimaryAction })}
             />
           )}

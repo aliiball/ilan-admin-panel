@@ -154,3 +154,53 @@ export const actionButtons = style({
   flexWrap: 'wrap',
   gap: vars.space[2],
 })
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Yükleme iskeleti — ölçü koruyan (brifing 2.1: layout shift yok)
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Sekme şeridinin iskeleti — iki sekme kadar yer tutar.
+ *
+ * Gerçek `Tabs` şeridinin altındaki kenarlığı da taklit ediyor: veri gelince
+ * şerit ne yatay ne dikey zıplasın.
+ */
+export const tabsSkeleton = style({
+  display: 'flex',
+  gap: vars.space[4],
+  paddingBlockEnd: vars.space[3],
+  borderBlockEnd: `1px solid ${vars.color.border.subtle}`,
+})
+
+/**
+ * Başlığın iskelet hâlinin kabı.
+ *
+ * `Skeleton`'ın `height: 1em`'i gerçek `<h2>`'nin satır kutusundan **kısadır**
+ * (xl + heading satır yüksekliği) ve veri gelince başlık zıplardı. Kap `heading`
+ * ile aynı `fontSize`'ı alıp `minBlockSize`'ı satır kutusuna sabitliyor: iskelet
+ * ile gerçek başlık aynı yüksekliği kaplıyor. (`UserDetailPage.titleSkeleton`'ın
+ * aynı gerekçesi.)
+ */
+export const headingSkeleton = style({
+  display: 'block',
+  fontSize: vars.font.size.xl,
+  minBlockSize: `calc(1em * ${vars.lineHeight.heading})`,
+})
+
+/**
+ * Matrisin yerini tutan blok: çok satırlı tabloyu taklit eden bordürlü kutu.
+ *
+ * İskeletin tek işi taklit ettiği bloğun ölçüsünü tutturmak; kenarlıklı yüzey
+ * "burada bir tablo yükleniyor" der. `minWidth: 0` grid öğesinin min-content'e
+ * çivilenmesini önler (matrisin scroller'ıyla aynı gerekçe).
+ */
+export const matrixSkeleton = style({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gap: vars.space[3],
+  minWidth: 0,
+  padding: vars.space[4],
+  background: vars.color.bg.surface,
+  border: `1px solid ${vars.color.border.subtle}`,
+  borderRadius: vars.radius.lg,
+})

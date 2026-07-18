@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { RotateCcw } from 'lucide-react'
-import type { Listing, ListingMetrics } from '../../types/domain'
+import { ChevronLeft, ChevronRight, ExternalLink, RotateCcw } from 'lucide-react'
+import type { AdminNote, Listing, ListingMetrics } from '../../types/domain'
 import { LISTING_FIELD_LABEL, LISTING_METRIC_LABEL } from '../../domain/labels'
+import { formatDateTime, machineDateTime } from '../../utils/formatDateTime'
 import { Alert } from '../../components/primitives/Alert'
 import { Button } from '../../components/primitives/Button'
 import { Skeleton } from '../../components/primitives/Skeleton'
@@ -9,6 +10,7 @@ import { AutomatedChecksPanel } from '../../components/composites/AutomatedCheck
 import { EmptyState } from '../../components/composites/EmptyState'
 import { ErrorState } from '../../components/composites/ErrorState'
 import { ImageGallery } from '../../components/composites/ImageGallery'
+import { ListingCard } from '../../components/composites/ListingCard'
 import { ListingFacts } from '../../components/composites/ListingFacts'
 import { LocationPanel } from '../../components/composites/LocationPanel'
 import { ModerationActionBar } from '../../components/composites/ModerationActionBar'
@@ -38,10 +40,12 @@ const BOLUM = {
   metrics: LISTING_FIELD_LABEL.metrics,
   location: LISTING_FIELD_LABEL.location,
   history: 'Moderasyon geçmişi',
+  notes: 'Admin notları',
   seller: LISTING_FIELD_LABEL.seller,
   promotions: 'Promosyonlar',
   checks: 'Otomatik kontroller',
   reports: 'Şikayetler',
+  similar: 'Benzer ilanlar',
 } as const
 
 /**
@@ -143,6 +147,98 @@ function Metrikler({ metrics }: { metrics: ListingMetrics }) {
 }
 
 /**
+ * Admin notları — en yeni başta (sözleşme sırası; ekran sıralamıyor).
+ *
+ * `AdminNote` **backend gelince kesinleşir** diye işaretli; şimdilik yazar, zaman
+ * ve metni gösteriyor. Boş dizi bir cevap: "not yok". `EmptyState`, `undefined`
+ * bölümü hiç çizmiyor (çağıran o veriyi getirmemiş).
+ */
+function AdminNotlari({ notes }: { notes: AdminNote[] }) {
+  if (notes.length === 0) {
+    return (
+      <EmptyState
+        variant="compact"
+        title="Bu ilana eklenmiş admin notu yok"
+        description="Moderatörler ilana serbest metin not iliştirebilir; henüz eklenmemiş."
+      />
+    )
+  }
+
+  return (
+    <ol className={css.noteList}>
+      {notes.map((note) => (
+        <li key={note.id} className={css.noteItem}>
+          <div className={css.noteHead}>
+            <span className={css.noteAuthor}>{note.authorName}</span>
+            <time className={css.noteTime} dateTime={machineDateTime(note.createdAt)}>
+              {formatDateTime(note.createdAt)}
+            </time>
+          </div>
+          <p className={css.noteText}>{note.text}</p>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+/**
+ * Benzer / mükerrer ilan önerileri; her biri bir `ListingCard`.
+ *
+ * "Yeni sekmede aç" eylemi kartın `actions` slotunda ve yalnız `onOpenSimilar`
+ * verilince görünür — sonuçsuz buton sunmanın anlamı yok. `onClick` **verilmiyor**:
+ * kartın kendisi tıklanabilir olsaydı hem satır tıklaması hem eylem butonu aynı
+ * niyeti iki kez sunardı; tek ve açık eylem "yeni sekmede aç".
+ *
+ * `similarListings` **backend gelince kesinleşir**: benzerlik skoru taşınırsa
+ * kartın yanına eklenir; şimdilik düz `Listing[]`.
+ */
+function BenzerIlanlar({
+  listings,
+  onOpenSimilar,
+}: {
+  listings: Listing[]
+  onOpenSimilar: ((listingId: string) => void) | undefined
+}) {
+  /* `const` alias: parametre daraltması kapanış içinde genişler (bkz. `fotoModere`). */
+  const ac = onOpenSimilar
+
+  if (listings.length === 0) {
+    return (
+      <EmptyState
+        variant="compact"
+        title="Benzer ilan bulunamadı"
+        description="Mükerrer tespit sistemi bu ilana benzer bir aday döndürmedi."
+      />
+    )
+  }
+
+  return (
+    <ul className={css.similarList}>
+      {listings.map((listing) => (
+        <li key={listing.id} className={css.similarItem}>
+          <ListingCard
+            listing={listing}
+            variant="compact"
+            {...(ac !== undefined && {
+              actions: (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leadingIcon={<ExternalLink size={16} />}
+                  onClick={() => ac(listing.id)}
+                >
+                  Yeni sekmede aç
+                </Button>
+              ),
+            })}
+          />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
  * `listing` gelmiş, geri kalanı gelmiş olabilir de olmayabilir de.
  *
  * `success` bunun özel hâli: bütün alanlar dolu, `errors` boş. `partialSuccess`
@@ -164,6 +260,10 @@ interface IcerikProps extends Pick<
   | 'onPause'
   | 'onArchive'
   | 'onRetry'
+  | 'onPhotoModerate'
+  | 'onPreviousListing'
+  | 'onNextListing'
+  | 'onOpenSimilar'
 > {
   data: IcerikVerisi
   errors: BolumHatalari
@@ -185,12 +285,70 @@ function Icerik({
   onPause,
   onArchive,
   onRetry,
+  onPhotoModerate,
+  onPreviousListing,
+  onNextListing,
+  onOpenSimilar,
 }: IcerikProps) {
   const { listing, events, reports, seller, previousRevision } = data
+  const { revisionHistory, sanctions, adminNotes, similarListings } = data
   const cakisma = decisionError?.kind === 'revisionConflict'
+
+  /*
+    Karşılaştırmanın önceki revizyonu: tam geçmiş varsa onun `[1]`'i (bir
+    önceki), yoksa `previousRevision` (Faz 3 davranışı). Sözleşme: ikisi de
+    verilirse `revisionHistory` kazanır.
+  */
+  const oncekiRevizyon =
+    revisionHistory !== undefined && revisionHistory.length > 1
+      ? revisionHistory[1]
+      : previousRevision
+
+  const kuyrukGezinme = onPreviousListing !== undefined || onNextListing !== undefined
+
+  /*
+    `const` alias: `onPhotoModerate` bir parametre ve parametrenin daraltması
+    kapanış (closure) içinde geri genişler; galerinin köprü ok fonksiyonları onu
+    içeriden çağırdığı için `const`'a alıp öyle daraltıyoruz (TS2722'den kaçış).
+  */
+  const fotoModere = onPhotoModerate
 
   return (
     <div className={css.root}>
+      {/*
+        Kuyruk gezinme: yalnız kuyruk bağlamında (handler verilince) çıkar —
+        şikayet detayından tek ilana gelince kuyruk yok, butonlar da yok. En
+        üstte, çünkü "bir sonraki ilana geç" incelemeden önce/sonra alınan bir
+        karar; sekme sırası da onu içeriğin başına koyuyor. Yalnız biri
+        verilirse boş `<span>` diğer ucu tutar (bkz. `.css.ts`).
+      */}
+      {kuyrukGezinme ? (
+        <nav className={css.queueNav} aria-label="Kuyruk gezinme">
+          {onPreviousListing !== undefined ? (
+            <Button
+              variant="secondary"
+              leadingIcon={<ChevronLeft size={16} />}
+              onClick={onPreviousListing}
+            >
+              Önceki ilan
+            </Button>
+          ) : (
+            <span />
+          )}
+          {onNextListing !== undefined ? (
+            <Button
+              variant="secondary"
+              trailingIcon={<ChevronRight size={16} />}
+              onClick={onNextListing}
+            >
+              Sonraki ilan
+            </Button>
+          ) : (
+            <span />
+          )}
+        </nav>
+      ) : null}
+
       {stale ? (
         <Alert
           tone="warning"
@@ -213,21 +371,35 @@ function Icerik({
               tek büyük görsel + altta şerit. Kırpılan kenarda filigran veya
               telefon numarası olabilir; galeri zaten `object-fit: contain`.
 
-              **Fotoğraf bazlı moderasyon kapalı ve bu bir eksiklik değil,
-              kanalsızlık:** `ListingReviewPanelProps`'ta `onPhotoApprove`/
-              `onPhotoReject` yok. `allowModeration` verip handler bağlamamak
-              galeriye kontrolleri zaten çizdirmez (kendi JSDoc'u: "sonuçsuz
-              buton sunmanın anlamı yok"); uydurma prop eklenmedi, boşluk
-              raporlandı.
+              **Fotoğraf bazlı moderasyon `onPhotoModerate` ile bağlı** (Faz 3'te
+              kanalsızdı, galeri salt okunurdu). Sözleşme tek bir boolean
+              taşıyor (`appropriate`); galeri kendi zengin sözleşmesini
+              (`onPhotoApprove`/`onPhotoReject`) bu boolean'a köprülüyor:
+              onay → `true`, red → `false`. Verilmezse `allowModeration` da
+              geçmiyor ve galeri Faz 3'teki gibi salt okunur kalıyor.
             */}
-            <ImageGallery photos={listing.photos} variant="filmstrip" />
+            <ImageGallery
+              photos={listing.photos}
+              variant="filmstrip"
+              {...(fotoModere !== undefined && {
+                allowModeration: true,
+                onPhotoApprove: (photoId: string) => fotoModere(photoId, true),
+                onPhotoReject: (photoId: string) => fotoModere(photoId, false),
+              })}
+            />
           </Bolum>
 
           <Bolum title={BOLUM.facts}>
             {/*
-              `previousRevision` varsa soru "ilan ne" değil "ne değişti"
-              (brifing 2.5: "önceki ve yeni değer farkları"). Panel farkı
-              hesaplamaz, iki değeri yan yana koyar.
+              Önceki revizyon varsa soru "ilan ne" değil "ne değişti" (brifing
+              2.5: "önceki ve yeni değer farkları"). Panel farkı hesaplamaz, iki
+              değeri yan yana koyar. Karşılaştırılan önceki hâl `oncekiRevizyon`:
+              tam geçmiş (`revisionHistory[1]`) varsa o, yoksa `previousRevision`.
+
+              **Yalnız `[1]` (bir önceki) karşılaştırılıyor.** Tam geçmişte iki
+              *eski* revizyonu seçip karşılaştırmak sözleşmenin işaret ettiği bir
+              yetenek ama tüketici kanalı yok (revizyon seçici prop'u yok);
+              `ListingFacts` iki `Listing` alıyor, N değil. Boşluk raporlandı.
 
               `highlightedFields` **geçilmiyor**: hangi değişikliğin "maddi"
               olduğu bir iş kuralı, `domain/`'in işi — ve orada böyle bir
@@ -237,8 +409,8 @@ function Icerik({
             */}
             <ListingFacts
               listing={listing}
-              variant={previousRevision !== undefined ? 'comparison' : 'sections'}
-              {...(previousRevision !== undefined && { previousListing: previousRevision })}
+              variant={oncekiRevizyon !== undefined ? 'comparison' : 'sections'}
+              {...(oncekiRevizyon !== undefined && { previousListing: oncekiRevizyon })}
             />
           </Bolum>
 
@@ -270,16 +442,34 @@ function Icerik({
             error={errors.events}
             render={(veri) => <ModerationHistory events={veri} variant="timeline" />}
           />
+
+          {/*
+            Admin notları moderasyon geçmişinin hemen ardında: ikisi de "bu ilan
+            hakkında daha önce ne konuşuldu" sorusuna bakıyor. `undefined` ise
+            bölüm hiç çizilmiyor — sayfa o veriyi getirmemiş; `[]` ise "not yok"
+            diye yazılıyor (`AdminNotlari` içinde). Faz 3'te kanalsızdı.
+          */}
+          {adminNotes !== undefined ? (
+            <Bolum title={BOLUM.notes}>
+              <AdminNotlari notes={adminNotes} />
+            </Bolum>
+          ) : null}
         </div>
 
         <div className={css.column}>
           {/*
-            `detailed`, `risk` değil: `risk` varyantı brifing 3.4'ün istediği
-            yaptırım geçmişini `sanctions` prop'uyla gösteriyor, ama
-            `ListingReviewData` `UserSanction[]` taşımıyor — kanalsız bir `risk`
-            paneli, sicili olmadığı hâlde "sicil temiz" izlenimi verirdi.
-            `detailed` iletişim bilgilerini de gösteriyor (brifing 2.5'in görünen
-            verisi). Boşluk raporlandı.
+            Varyant `sanctions`'a bağlı: yaptırım sicili geldiğinde `risk` (brifing
+            3.4'ün istediği "yaptırım geçmişi"; Faz 3'te kanalsızdı), yoksa
+            `detailed`. `risk` açık şikayet + sicili öne çıkarıyor ama iletişim
+            bilgilerini (`detailed`'ın e-posta/telefonu) göstermiyor — sicilin
+            olduğu bağlamda risk sinyalleri iletişimden önce gelir; iletişim
+            bilgisi eksiği raporlandı.
+
+            `sanctions` **doğrudan** `sanctions` prop'una geçiyor. Yetki sınırı
+            (`UserSanction.reason`) sayfa katmanında: bu ekran veriyi `state`'ten
+            aldığına göre sicili getiren container zaten yetkiliyi eledi — panel
+            yetki bilmez (`risk` varyantı `destek`e gösterilmemeli, kararı sayfa
+            verir). `sanctions === undefined` ise sicil hiç konuşulmaz.
 
             Sayaçlar hesabın kendi toplamlarından: bu ekranın bağlamı süzülmüş
             bir alt küme değil, hesabın tamamı. `openReportCount` için
@@ -293,10 +483,11 @@ function Icerik({
             render={(veri) => (
               <SellerPanel
                 user={veri}
-                variant="detailed"
+                variant={sanctions !== undefined ? 'risk' : 'detailed'}
                 listingCount={veri.listingCount}
                 activeListingCount={veri.activeListingCount}
                 openReportCount={veri.reportCount}
+                {...(sanctions !== undefined && { sanctions })}
               />
             )}
           />
@@ -353,6 +544,18 @@ function Icerik({
               )
             }
           />
+
+          {/*
+            Benzer / mükerrer ilan önerileri (brifing 2.5; Faz 3'te kanalsızdı).
+            `undefined` ise bölüm çizilmiyor; `[]` ise "benzer ilan bulunamadı"
+            (`BenzerIlanlar` içinde). "Yeni sekmede aç" eylemi `onOpenSimilar`'a
+            bağlı — verilmezse öneriler salt okunur görünür.
+          */}
+          {similarListings !== undefined ? (
+            <Bolum title={BOLUM.similar}>
+              <BenzerIlanlar listings={similarListings} onOpenSimilar={onOpenSimilar} />
+            </Bolum>
+          ) : null}
         </div>
       </div>
 
@@ -528,6 +731,10 @@ export function ListingReviewPanel({
   onPause,
   onArchive,
   onRetry,
+  onPhotoModerate,
+  onPreviousListing,
+  onNextListing,
+  onOpenSimilar,
 }: ListingReviewPanelProps) {
   if (state.status === 'idle' || state.status === 'loading') {
     return <Iskelet />
@@ -588,6 +795,10 @@ export function ListingReviewPanel({
     ...(decisionError !== undefined && { decisionError }),
     ...(onPause !== undefined && { onPause }),
     ...(onArchive !== undefined && { onArchive }),
+    ...(onPhotoModerate !== undefined && { onPhotoModerate }),
+    ...(onPreviousListing !== undefined && { onPreviousListing }),
+    ...(onNextListing !== undefined && { onNextListing }),
+    ...(onOpenSimilar !== undefined && { onOpenSimilar }),
   }
 
   if (state.status === 'partialSuccess') {

@@ -8,6 +8,7 @@ import { AutomatedChecksPanel } from '../../components/composites/AutomatedCheck
 import { EmptyState } from '../../components/composites/EmptyState'
 import { ErrorState } from '../../components/composites/ErrorState'
 import { ListingCard } from '../../components/composites/ListingCard'
+import { ModerationActionBar } from '../../components/composites/ModerationActionBar'
 import {
   AUTOMATED_CHECK_BLOCKING,
   LISTING_FIELD_LABEL,
@@ -56,24 +57,33 @@ function yuksekRiskli(listing: Listing): boolean {
  * kuyruk tamamlandı" der (bu **iyi haber**, hata gibi görünmez), `error` tekrar
  * denemeyi, `unauthorized` yetki istemeyi önerir.
  *
- * ## Kuyruk karar VERMEZ, karara GÖNDERİR
+ * ## Hızlı karar OPSİYONEL, yoksa karara GÖNDERİR
  *
  * Brifing 2.4 kuyruktan "hızlı onay", "hızlı red" ve "düzeltme isteme"
- * bekliyor, `ModerationActionBar`'ı da türetilen componentler arasında sayıyor —
- * ama `ApprovalQueueProps`'ta `onApprove`/`onReject`/`onRequestChanges`
- * **yok**. Çubuk render edilseydi bastığında hiçbir şey olmayan üç buton
- * çıkardı; repo kuralı bunun tersini söylüyor ("sonuçsuz kutu sunmanın anlamı
- * yok" — `RolePermissionMatrix`, `TopBar`'ın bildirim zili). Bu yüzden kuyruk
- * `onOpenDetail` ile detaya gönderir ve kararı `ListingReviewPanel` verir; o
- * panelin sözleşmesinde çubuk **ve** `decisionError` zaten var. Karar kanalları
- * eklenirse çubuk buraya girer ve `capabilities` o an canlanır.
+ * bekliyor. Bu kanallar `ApprovalQueueProps`'a sonradan eklendi:
+ * `onApprove`/`onReject`/`onRequestChanges` verilince **seçili ilanın** detay
+ * paneline bir `ModerationActionBar` girer ve `capabilities` o an canlanır.
+ *
+ * Üçü de opsiyonel ve **birlikte** çalışır: `ModerationActionBar` üçünü de
+ * zorunlu tuttuğu için hepsi bağlı değilse çubuk hiç kurulmaz. O hâlde Faz 3
+ * davranışı aynen korunur — kuyruk yalnız `onOpenDetail` ile detaya gönderir,
+ * kararı `ListingReviewPanel` verir. Handler bağlı değilken çubuğu render
+ * etmek, bastığında hiçbir şey olmayan buton üretirdi ("sonuçsuz kutu sunmanın
+ * anlamı yok" — `RolePermissionMatrix`, `TopBar`'ın bildirim zili).
+ *
+ * Çubuk yalnız seçili ilana girer, her satıra değil: `submittingAction` ve
+ * `decisionError` tekil, "üzerinde karar verilen ilan"a ait — kuyruğun her
+ * satırında ayrı bir karar akışı olsaydı bu iki kanal hangi satırı kastettiğini
+ * söyleyemezdi.
  *
  * ## İki kapı
  *
  * Bir eylem yetki (`capabilities`) ve durum (`domain/moderationActions.ts`'in
  * `allowedFrom`'u) kapılarından geçmeden görünmez — `disabled` değil, **hiç
- * render edilmez**. Kuyrukta bu ikili yalnız "Bana ata"ya uygulanıyor; "Atla"
- * bir durum geçişi değil kuyruk gezinmesidir, "Detaylı incele" ise okumadır.
+ * render edilmez**. Kuyrukta bu ikili iki yere uygulanıyor: "Bana ata" (burada,
+ * elle) ve seçili ilanın hızlı karar çubuğu (`ModerationActionBar` ikisini de
+ * kendi içinde tutar). "Atla" bir durum geçişi değil kuyruk gezinmesidir,
+ * "Detaylı incele" ise okumadır — ikisi kapısız.
  *
  * ## Kilit yetki değil, geçici durum
  *
@@ -106,6 +116,11 @@ export function ApprovalQueue({
   onAssignToSelf,
   onSkip,
   onOpenDetail,
+  submittingAction,
+  decisionError,
+  onApprove,
+  onReject,
+  onRequestChanges,
   onRetry,
 }: ApprovalQueueProps) {
   const kapsam = useId()
@@ -285,6 +300,41 @@ export function ApprovalQueue({
     )
   }
 
+  /**
+   * Seçili ilanın hızlı karar çubuğu — brifing 2.4'ün "hızlı onay/red/düzeltme".
+   *
+   * Yalnız üç karar handler'ı da bağlıysa kurulur: `ModerationActionBarProps`
+   * onları **zorunlu** tutuyor, kuyruk ise opsiyonel — biri eksikse çubuk hiç
+   * kurulamaz. Hepsi eksikken de kurulmaz ve Faz 3 davranışı korunur (kuyruk
+   * yalnız `onOpenDetail`'e yönlendirir); "handler yoksa buton yok" kuralı.
+   *
+   * **İki kapıyı çubuğun kendisi tutuyor:** `capabilities` (yetki) ve
+   * `listing.status` (`domain/moderationActions.ts`'in `allowedFrom`'u) geçiliyor;
+   * çubuk hangi eylemin o an var olduğunu süzer ve hiçbiri kalmazsa `null` döner —
+   * `disabled` buton değil, yok. `submittingAction`/`decisionError` seçili ilana
+   * ait; detay paneli yalnız seçili ilan için render edildiğinden doğrudan bağlanır.
+   */
+  const hizliKararCubugu = (listing: Listing): ReactNode => {
+    if (onApprove === undefined || onReject === undefined || onRequestChanges === undefined) {
+      return null
+    }
+
+    return (
+      <ModerationActionBar
+        listingId={listing.id}
+        status={listing.status}
+        revision={listing.revision}
+        capabilities={capabilities}
+        variant="inline"
+        onApprove={onApprove}
+        onReject={onReject}
+        onRequestChanges={onRequestChanges}
+        {...(submittingAction !== undefined && { submittingAction })}
+        {...(decisionError !== undefined && { decisionError })}
+      />
+    )
+  }
+
   const detayPaneli = (listing: Listing): ReactNode => {
     const gonderim = listing.moderation.submittedAt
     const not = listing.moderation.reviewNote
@@ -327,6 +377,16 @@ export function ApprovalQueue({
           </dl>
 
           <AutomatedChecksPanel items={listing.moderation.automatedChecks} variant="cards" />
+
+          {/*
+            Hızlı karar çubuğu (kanal bağlıysa). `decisionError` çubuğun kendi
+            `danger` Alert'iyle görünür; `revisionConflict`'te çubuk tekrar deneme
+            butonu **sunmaz** — aynı damga aynı çakışmayı verir. Kuyrukta doğru
+            eylem aşağıdaki "Detaylı incele" (`onOpenDetail`): çakışmayı çözecek
+            yer detay ekranı, kuyruk değil (`ListingReviewPanel`'in "İlanı yeniden
+            yükle"siyle aynı gerekçe, kuyruğa uygun kanal).
+          */}
+          {hizliKararCubugu(listing)}
 
           <div className={css.detailActions}>
             <Button

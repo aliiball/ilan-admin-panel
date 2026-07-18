@@ -1,21 +1,55 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
 import {
+  AdminPermission,
   ReportSeverity,
   ReportStatus,
+  type ISODateTime,
+  type Listing,
   type ListingReport,
   type Paginated,
+  type UserAccount,
 } from '../../types/domain'
 import type { ReportFilterValues } from '../../types/component-props'
 import {
+  adminUserFixtures,
+  allListingFixtures,
   allReportFixtures,
+  allUserFixtures,
   emptyReportFixtures,
   kadikoyApartmentReports,
   marmarisPensionReports,
   reportBySeverity,
+  reportInReviewFalseLicense,
   reportOpenCriticalFraud,
 } from '../../fixtures'
 import { ReportManagementPage } from './ReportManagementPage'
+
+/**
+ * Ad çözümleme sözlüğü: hem son kullanıcılar (şikayetçiler) hem adminler
+ * (atananlar) tek `Record`'ta. **İkisi de gerekli** — bir şikayetin `reporterUserId`'si
+ * `allUserFixtures`'tan, `assignedAdminId`'si `adminUserFixtures`'tan çözülüyor;
+ * `AdminUser` diye ayrı bir tip yok, admin de `UserAccount`.
+ */
+const KULLANICILAR: Record<string, UserAccount> = Object.fromEntries(
+  [...allUserFixtures, ...adminUserFixtures].map((kullanici): [string, UserAccount] => [
+    kullanici.id,
+    kullanici,
+  ]),
+)
+
+/** İlan çözümleme sözlüğü: `report.listingId` → `Listing`. */
+const ILANLAR: Record<string, Listing> = Object.fromEntries(
+  allListingFixtures.map((ilan): [string, Listing] => [ilan.id, ilan]),
+)
+
+/**
+ * Sabit "şimdi". `new Date()` YASAK: göreli süre ("3 gündür bekliyor") "şimdi"ye
+ * dayanır ve gerçek saatle her gün değişip Chromatic'i kirletirdi. Kritik
+ * fixture'ın (`reportOpenCriticalFraud`, `createdAt` 13 Tem 09:12) tam 3 gün
+ * öncesinden sonrası: kart "3 gündür bekliyor" der.
+ */
+const SIMDI: ISODateTime = '2026-07-16T10:00:00+03:00'
 
 /**
  * Sayfa paketi. `totalPages` `pageSize` ve `totalItems`'tan **türetiliyor**:
@@ -98,13 +132,16 @@ const meta = {
       description: {
         component:
           'Şikayet filtresi, kuyruğu ve karar eylemleri. Veri **prop’tan gelir, çekilmez**. ' +
-          '48rem’in altında `ReportCard`’ın `queue` varyantından kuyruk kartları, üstünde ' +
-          '`DataTable` — geçişi ekran yapıyor, çünkü `DataTable`’ın `mobileMode="cards"` kanalı ' +
-          'viewport’a hiç bakmıyor. `filteredEmpty` bir `AsyncState` üyesi **değil**: ekran onu ' +
+          'Tek `DataTable`, `mobileMode="cards"` ile: 48rem’in altında `renderMobileCard` ' +
+          '`ReportCard`’ın `queue` varyantını çiziyor, üstünde tablo kalıyor. Geçişi `DataTable` ' +
+          'kendisi yapıyor (viewport’a kendisi bakıyor, iki dalı da DOM’da tutuyor). ' +
+          '`filteredEmpty` bir `AsyncState` üyesi **değil**: ekran onu ' +
           '`status === "empty"` ile filtrelerin varsayılandan farklı olmasından türetir — biri ' +
           '“filtreyi gevşet” dedirtir, öteki “kuyruk temiz” diye iyi haber verir. ' +
-          '**Sözleşme boşlukları:** izin listesi, ilan/ad çözümlemesi, `now` ve seçim kanalı ' +
-          'yok; gerekçeleri component JSDoc’unda.',
+          'Karar eylemleri **iki kapıdan** geçer (durum + `availablePermissions`, kademeler ' +
+          'kapsayıcı); ad/ilan `usersById`/`listingsById`’den çözülür; bekleme süresi `now`’dan. ' +
+          '**Kalan boşluk:** sıralama/seçim ve `assignedAdminId` filtre kanalı yok — gerekçeleri ' +
+          'component JSDoc’unda.',
       },
     },
     ai: {
@@ -119,16 +156,25 @@ const meta = {
   },
 
   /*
-    Dokuz prop'un dokuzu da `ReportManagementPageProps`'ta ZORUNLU, yani
-    hiçbirinin **yokluğu bir durum** değil — meta.args'a konmaları AGENTS.md'nin
-    TS2375 duvarını doğurmuyor. O kural "meta'ya konan prop story'de `undefined`
-    ile geri alınamaz" diyor; burada hiçbir story bir prop'u geri almak
-    istemiyor, yalnız değerini değiştiriyor. `state` ve `filters` her state
-    story'sinde override ediliyor.
+    Zorunlu prop'lar + iki çözümleme sözlüğü meta'da. Sözlükler opsiyonel ama
+    **yoklukları ayrı bir durum DEĞİL**: `usersById === undefined` ile
+    `usersById === {}` aynı render'ı verir (ikisinde de her kimlik çözülemez), o
+    yüzden fallback boş sözlükle gösterilebiliyor (`UnresolvedReferencesFallBack`)
+    ve meta'ya konmaları AGENTS.md'nin TS2375 kuralını çiğnemiyor. Böylece hero
+    story'ler ham UUID değil gerçek ad/ilan gösteriyor.
+
+    **`now` ve `availablePermissions` meta'ya KONMADI**: ikisinin de yokluğu
+    gerçek bir durum. `now` yoksa kart mutlak tarihe düşer (süre yazmaz —
+    `DatesAreDeterministic` bunu ölçüyor) ve bu ancak prop'u geçmeyerek
+    gösterilebilir. `availablePermissions` yoksa yalnız durum kapısı işler (Faz 3
+    davranışı, `CriticalReports`/`ResolvedReports`'un tabanı); izin kapısını
+    gösteren story'ler onu kendileri veriyor.
   */
   args: {
     state: { status: 'success', data: sayfa(allReportFixtures) },
     filters: BOS_FILTRELER,
+    usersById: KULLANICILAR,
+    listingsById: ILANLAR,
     onFiltersChange: fn(),
     onPageChange: fn(),
     onReportOpen: fn(),
@@ -690,11 +736,10 @@ export const MobileQueueCards: Story = {
 /**
  * Düzen varyantı: 1440 pikselde on bir sütunlu triage tablosu.
  *
- * Brifing 2.8'in görünen verilerinden **üçü eksik ve sözleşme yüzünden eksik**:
- * "İlan özeti" ve "İlanın mevcut durumu" `Listing` gerektiriyor, "şikayet eden"
- * ile "atanan admin"in **adı** `UserAccount` gerektiriyor — veri paketi yalnız
- * `Paginated<ListingReport>` taşıyor ve ekran veri çekmiyor. Tablo elindeki tek
- * gerçeği, kimliği gösteriyor.
+ * Brifing 2.8'in üç verisi artık **çözülüyor**: "İlan özeti" ve "İlanın mevcut
+ * durumu" `listingsById`'den (başlık + ilan no + `StatusBadge`), "şikayet eden"
+ * ile "atanan admin"in **adı** `usersById`'den. Sözlükler meta'da, tablo ham UUID
+ * değil ad/başlık gösteriyor.
  */
 export const DesktopTable: Story = {
   globals: { viewport: { value: 'desktop1440' } },
@@ -716,6 +761,17 @@ export const DesktopTable: Story = {
     ]) {
       await expect(tabloIcinde.getByText(baslik)).toBeInTheDocument()
     }
+
+    /*
+      İlan başlığı kimlikten değil `listingsById`'den geliyor. Çorlu tarlası
+      `allReportFixtures`'ta tek şikayete bağlı (marmaris/kadıköy birden çok
+      satırda tekrar eder), bu yüzden `getByText` benzersiz kalsın diye o seçildi.
+    */
+    await expect(
+      tabloIcinde.getByText("Çorlu'da Sanayi Bölgesine Yakın 12.450 m² Tarla"),
+    ).toBeInTheDocument()
+    /* Atanan admin adıyla (`admin-content-reviewer-1` → "Burak Şahin"), UUID değil. */
+    await expect(tabloIcinde.getByText('Burak Şahin')).toBeInTheDocument()
   },
 }
 
@@ -743,14 +799,12 @@ export const AnonymousReporter: Story = {
  * "şikayet hangi gün açıldı" sorusu UTC runner'da bir, İstanbul'da başka
  * cevaplanır ve Chromatic her build'i "değişmiş" gösterirdi.
  *
- * **Bekleme süresi ("3 gündür bekliyor") gösterilemiyor:** `ReportCardProps.now`
- * tam bu ekran için eklendi ama `ReportManagementPageProps`'ta `now` kanalı yok
- * ve ekran saati kendi okuyamaz. Sabit bir "bugün" gömmek daha kötüsü olurdu —
- * üretimde her kart yanlış bir süre yazardı. Kart `now` verilmeyince açılış anını
- * mutlak tarih olarak gösteriyor, ki brifing 2.8'in istediği görünen veri de tam
- * olarak o ("Şikayet tarihi"). Ölçüm bu yüzden süreyi değil **tarihin
- * sabitliğini** ölçüyor; sürenin determinizmi `ReportCard.stories.tsx` →
- * `WaitingTimeComesFromNowNotTheClock`'ta ölçülü.
+ * **Bu story `now`'u bilerek geçmiyor** — bekleme süresinin yokluk hâlini
+ * gösteriyor. `now` kanalı artık var (`WaitingTimeIsShownWithNow` onu veriyor),
+ * ama verilmeyince kart açılış anını mutlak tarih olarak gösterir, ki brifing
+ * 2.8'in istediği görünen veri de tam olarak o ("Şikayet tarihi"). Ekran hiçbir
+ * zaman `new Date()` çağırmaz; "şimdi"yi hep sayfa katmanı verir. Ölçüm süreyi
+ * değil **tarihin sabitliğini** ölçüyor.
  */
 export const DatesAreDeterministic: Story = {
   args: { state: { status: 'success', data: sayfa([reportOpenCriticalFraud]) } },
@@ -763,5 +817,150 @@ export const DatesAreDeterministic: Story = {
     /* `now` kanalı olmadığı için süre yazılmıyor — uydurulmuş bir "şimdi" de yok. */
     await expect(canvas.queryAllByText(/bekliyor$/)).toHaveLength(0)
     await expect(canvas.getByText('Açıldı')).toBeInTheDocument()
+  },
+}
+
+/**
+ * `now` verildiğinde kuyruk kartı **bekleme süresini** gösteriyor.
+ *
+ * `SIMDI` sabit (`2026-07-16T10:00`); kritik şikayet 13 Tem 09:12'de açıldı → tam
+ * 3 gün geçti, kart "3 gündür bekliyor" der. Ekran saati kendi okumaz; süre
+ * `now`'dan hesaplanır ve sabit girdiyle her koşuda aynıdır (Chromatic determinizmi).
+ *
+ * Ölçüm kart üzerinden — bekleme süresi `queue` varyantının işi ve 48rem'in
+ * altında görünen düzen o. `now` verildiğinde tarih kaybolmaz, ikinci plana
+ * düşer: makine değeri `<time>`'da durmaya devam eder.
+ */
+export const WaitingTimeIsShownWithNow: Story = {
+  globals: { viewport: { value: 'mobile320' } },
+  args: {
+    state: { status: 'success', data: sayfa([reportOpenCriticalFraud]) },
+    now: SIMDI,
+  },
+  play: async ({ canvasElement }) => {
+    const kart = within(kartlar(canvasElement)[0] as HTMLElement)
+
+    await expect(kart.getByText('3 gündür bekliyor')).toBeInTheDocument()
+    /* "Açıldı" etiketi süreyle yer değiştirdi — ikisi aynı anda görünmez. */
+    await expect(kart.queryByText('Açıldı')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * `usersById`/`listingsById` çözülüyor: tablo ham UUID değil **ad** ve **başlık**
+ * gösteriyor (brifing 2.8'in "şikayet eden", "atanan admin", "ilan özeti").
+ *
+ * Sözlükler meta'da. `marmarisPensionReports`'un iki şikayeti farklı şikayetçilere
+ * (`Yapı Proje Gayrimenkul`, `Ayşe Demir`) ve biri içerik denetçisine
+ * (`Burak Şahin`) bağlı; hiçbiri "Bilinmiyor" değil.
+ */
+export const NamesAndListingsAreResolved: Story = {
+  globals: { viewport: { value: 'desktop1440' } },
+  args: { state: { status: 'success', data: sayfa(marmarisPensionReports) } },
+  play: async ({ canvasElement }) => {
+    const tabloIcinde = tablo(canvasElement)
+
+    await expect(tabloIcinde.getByText('Yapı Proje Gayrimenkul')).toBeInTheDocument()
+    await expect(tabloIcinde.getByText('Ayşe Demir')).toBeInTheDocument()
+    await expect(tabloIcinde.getByText('Burak Şahin')).toBeInTheDocument()
+
+    /* Çözülemeyen kimlik yok — sözlükte hepsi var. */
+    await expect(tabloIcinde.queryByText('Bilinmiyor')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Sözlükte olmayan başvuru: **kullanıcı** "Bilinmiyor", **ilan** yalnız
+ * `listingId` — eksik bağlam, kırık başvuru değil (`linkedListingUnavailable`).
+ *
+ * Boş sözlükler geçiliyor (`{}`): render'ı `usersById === undefined` ile aynı,
+ * yani fallback'i prop'u kaldırmadan (TS2375) gösteren yol bu. "Bilinmiyor"
+ * ekranın (masaüstü tablosunun) yazdığı bir metin; kart kendi yedeğinde ham
+ * kimliği gösterir (`ReportCard` sözleşmesi), o yüzden iddia tabloya daraltılıyor.
+ */
+export const UnresolvedReferencesFallBack: Story = {
+  globals: { viewport: { value: 'desktop1440' } },
+  args: {
+    state: { status: 'success', data: sayfa([reportInReviewFalseLicense]) },
+    usersById: {},
+    listingsById: {},
+  },
+  play: async ({ canvasElement }) => {
+    const tabloIcinde = tablo(canvasElement)
+
+    /* Şikayetçi ve atanan admin çözülemedi: ikisi de "Bilinmiyor". */
+    await expect(tabloIcinde.getAllByText('Bilinmiyor')).toHaveLength(2)
+
+    /* İlan çözülemedi: ad değil kimlik. */
+    await expect(tabloIcinde.getByText('listing-tourism-marmaris-pension')).toBeInTheDocument()
+  },
+}
+
+/**
+ * İzin kapısı — **sınırlı triage** (`report:triageLimited`): içerik denetçisi
+ * yalnız "Eskale et"i görür.
+ *
+ * "Çöz"/"Geçersiz say" `report:resolve` ister ve denetçide yok → hiç render
+ * edilmez (`disabled` verilmez). "Eskale et" `report:triageLimited` ister ve o
+ * var. Durum kapısı açık (şikayet `open`), yani gizleyen tek şey izin.
+ */
+export const LimitedTriageShowsOnlyEscalate: Story = {
+  args: {
+    state: { status: 'success', data: sayfa([reportOpenCriticalFraud]) },
+    availablePermissions: [AdminPermission.ReportView, AdminPermission.ReportTriageLimited],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryAllByText('Çöz')).toHaveLength(0)
+    await expect(canvas.queryAllByText('Geçersiz say')).toHaveLength(0)
+    await expect(canvas.getAllByText('Eskale et').length).toBeGreaterThan(0)
+  },
+}
+
+/**
+ * İzin kapısı — **kademeler kapsayıcı**: tam `report:triage` (sınırlısı listede
+ * OLMASA da) eskalasyonu kapsıyor.
+ *
+ * `ROLE_PERMISSIONS` moderatöre/süper admine `ReportTriage` verir ama
+ * `ReportTriageLimited`'ı **listelemez** — kademeyi kapsadığı için. `izinYeterli`
+ * bu yüzden önce tamı sınıyor: sınırlı gerekirse tam da yeter. Bu izin kümesinde
+ * `ReportResolve` yok, o yüzden yalnız "Eskale et" görünüyor (destek rolünün hâli).
+ * Ters sıra (yalnız `includes(ReportTriageLimited)`) bu kullanıcıya eskalasyonu
+ * yanlışlıkla gizlerdi.
+ */
+export const FullTriageWithoutResolveStillEscalates: Story = {
+  args: {
+    state: { status: 'success', data: sayfa([reportOpenCriticalFraud]) },
+    availablePermissions: [AdminPermission.ReportView, AdminPermission.ReportTriage],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryAllByText('Çöz')).toHaveLength(0)
+    await expect(canvas.queryAllByText('Geçersiz say')).toHaveLength(0)
+    await expect(canvas.getAllByText('Eskale et').length).toBeGreaterThan(0)
+  },
+}
+
+/**
+ * İzin kapısı — `report:resolve` olan rol (moderatör/süper admin) **üç kararı da**
+ * görür: durum kapısı açık `open` şikayette hiçbir eylem gizlenmiyor.
+ */
+export const ResolvePermissionShowsAllDecisions: Story = {
+  args: {
+    state: { status: 'success', data: sayfa([reportOpenCriticalFraud]) },
+    availablePermissions: [
+      AdminPermission.ReportView,
+      AdminPermission.ReportTriage,
+      AdminPermission.ReportResolve,
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getAllByText('Çöz').length).toBeGreaterThan(0)
+    await expect(canvas.getAllByText('Geçersiz say').length).toBeGreaterThan(0)
+    await expect(canvas.getAllByText('Eskale et').length).toBeGreaterThan(0)
   },
 }

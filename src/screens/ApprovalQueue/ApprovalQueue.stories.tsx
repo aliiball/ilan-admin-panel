@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, fn, userEvent, within } from 'storybook/test'
+import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
 import {
   AdminPermission,
   AdminRole,
@@ -146,6 +146,21 @@ function sayfa(items: Listing[], page = 1, pageSize = 20): Paginated<Listing> {
   }
 }
 
+/**
+ * Base UI popup'ının kapanmasını bekler — `a11y.test: 'error'` ile şart.
+ *
+ * `ListingReviewPanel`/`Select` story'lerindeki `popupKapanmasiniBekle`'nin
+ * aynısı: popup açıkken basılan `data-base-ui-focus-guard` span'leri
+ * `aria-hidden="true"` + `tabindex="0"` taşıyor; kapanma animasyonu sürerken axe
+ * çalışırsa story yazı-tura düşüyor. Karar dialog'unu açıp kapatan story bununla
+ * bitmeli (açık bırakılan popup sorun değil — sorun kapanırken bitirmek).
+ */
+async function popupKapanmasiniBekle(): Promise<void> {
+  await waitFor(() =>
+    expect(document.querySelector('[data-base-ui-focus-guard]')).not.toBeInTheDocument(),
+  )
+}
+
 const meta = {
   title: 'Screens/ApprovalQueue',
   component: ApprovalQueue,
@@ -158,10 +173,10 @@ const meta = {
       description: {
         component:
           'Moderasyon kuyruğu: karar bekleyen ilanları sıraya dizer ve incelemeye **yönlendirir**. ' +
-          'Karar VERMEZ — `ApprovalQueueProps` içinde `onApprove`/`onReject`/`onRequestChanges` yok, ' +
-          'bu yüzden `ModerationActionBar` bilerek render edilmiyor: bastığında hiçbir şey olmayan ' +
-          'üç buton sunmak, sunmamaktan kötü. Karar `ListingReviewPanel` tarafında verilir. ' +
-          '"Bana ata" iki kapıdan geçer: yetki (`capabilities`) ve durum (`allowedFrom`). ' +
+          'Hızlı karar **opsiyonel**: `onApprove`/`onReject`/`onRequestChanges` verilirse seçili ' +
+          'ilanın detay paneline bir `ModerationActionBar` girer; verilmezse çubuk hiç kurulmaz ve ' +
+          'kuyruk yalnız `onOpenDetail` ile detaya gönderir (Faz 3 davranışı, "handler yoksa buton yok"). ' +
+          'Hem "Bana ata" hem hızlı karar iki kapıdan geçer: yetki (`capabilities`) ve durum (`allowedFrom`). ' +
           'Kilit ise yetki değil geçici bir durumdur — sebebi söylenebildiği için `aria-disabled` ' +
           've açıklama ile kapatılır, gizlenmez.',
       },
@@ -396,37 +411,134 @@ export const Locked: Story = {
   },
 }
 
-/*
-  ZORUNLU AMA YAZILAMAYAN STORY: `Conflict`.
+/* ------------------------------------------------------------------------- *
+ * Hızlı karar akışı — brifing 2.4 (kanallar sonradan eklendi)
+ * ------------------------------------------------------------------------- */
 
-  Brifing 3.5 `ApprovalQueue` için `Conflict` story'sini zorunlu tutuyor
-  (brifing 2.4: "`conflict`: Başka moderatör ilanın revizyonunu değiştirmiş").
-  **Kanalı yok:** revizyon çakışması `ModerationDecisionError` ile bildiriliyor ve
-  onu taşıyan iki prop var — `ModerationActionBarProps.decisionError` ve
-  `ListingReviewPanelProps.decisionError`. `ApprovalQueueProps`'ta yok.
+/**
+ * Hızlı karar çubuğu yalnız **seçili ilanda** ve kanal bağlıysa çıkar.
+ *
+ * `onApprove`/`onReject`/`onRequestChanges` verildi ve bir ilan seçili: seçili
+ * ilanın detay panelinde `ModerationActionBar` görünür, kuyruğun her satırında
+ * değil. Çubuk kararı doğrudan çağırmaz — dialog açıp doğrulatır (onayda alan yok
+ * ama dialog yine açılır, `ModerationActionBar`'ın `ApproveStillConfirms` emsali);
+ * karar `expectedRevision` ile damgalanıp handler'a ulaşır.
+ *
+ * Kanallar `meta.args`'ta **yok**: yoklukları bir durum (Faz 3'ün "yalnız
+ * yönlendir" davranışı) ve meta'ya konsalar bu dosyada geri alınamaz olurlardı
+ * (AGENTS.md, TS2375). İhtiyacı olan story kendi verir.
+ */
+export const QuickDecisionOnSelected: Story = {
+  args: {
+    state: { status: 'success', data: sayfa(kuyruk) },
+    selectedListingId: atanmamisIlan.id,
+    onApprove: fn(),
+    onReject: fn(),
+    onRequestChanges: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+    const body = within(document.body)
 
-  Uydurulmadı ve prop eklenmedi (`types/component-props.ts` bu ekranın dosyası
-  değil). Emsal: `PromotionFlagsPanel`, `ReportCard` ve `SellerPanel`'in
-  Loading/Error story'leri de kanalları olmadığı için yazılmamış, gerekçeleri
-  story dosyalarında yorumlu duruyor.
+    /* Çubuk yalnız seçili ilana girdi: dört satırlık kuyrukta "Onayla" tek. */
+    await expect(canvas.getAllByRole('button', { name: 'Onayla' })).toHaveLength(1)
 
-  Sebep tesadüf değil, tutarlı: çakışma **gönderilen bir karara** verilen cevaptır
-  (`AsyncState`'in üyesi bilerek değil — bkz. `ModerationDecisionError` JSDoc'u) ve
-  bu ekran karar göndermiyor. Kuyruğun `onApprove`/`onReject`/`onRequestChanges`'i
-  yok; olmayan kararın reddedilmesi de olamaz. Yani `Conflict`'in eksikliği
-  hızlı karar akışının eksikliğinin **aynı boşluğu**.
+    /* Karar dialog'dan geçer; onay damgayı ilanın revizyonuyla basar. */
+    await userEvent.click(canvas.getByRole('button', { name: 'Onayla' }))
+    await userEvent.click(await body.findByRole('button', { name: 'Onayla ve yayınla' }))
 
-  İki tutarlı kapanış var, ikisi de ana ajanın kararı:
-    1. Kuyruk karar vermez  → `Conflict` bu ekranın zorunlu story'si olmaktan
-       çıkar; çakışmayı `ListingReviewPanel` gösterir (orada zaten zorunlu ve
-       kanalı var). Brifing 3.5'in satırı düzeltilir.
-    2. Kuyruk hızlı karar verir → `ApprovalQueueProps`'a karar handler'ları
-       **ve** `decisionError` eklenir; `ModerationActionBar` satıra girer,
-       `capabilities` canlanır ve bu story yazılır.
+    await expect(args.onApprove).toHaveBeenCalledWith(
+      expect.objectContaining({
+        listingId: atanmamisIlan.id,
+        expectedRevision: atanmamisIlan.revision,
+      }),
+    )
 
-  İkisinin ortası yok: `decisionError`'ı tek başına eklemek, gönderilmemiş bir
-  kararın reddini göstermek olurdu.
-*/
+    await popupKapanmasiniBekle()
+  },
+}
+
+/**
+ * `Conflict` — brifing 3.5'in zorunlu tuttuğu, Faz 3'te kanalsız olan story.
+ *
+ * Artık `decisionError` kanalı var: seçili ilana verilen hızlı karar, başka bir
+ * moderatör onu bu arada düzenlediği için `revisionConflict` ile reddedildi.
+ * Çubuk `danger` bir Alert gösterir ve **tekrar deneme butonu sunmaz** — aynı
+ * damga (`expectedRevision`) aynı çakışmayı üretir, damgayı yenilemek ise
+ * görülmemiş bir içeriği onaylamak olur. Kuyrukta doğru eylem ilanı `onOpenDetail`
+ * ile açıp yeniden bakmaktır: çakışmayı çözecek yer detay ekranı, kuyruk değil.
+ *
+ * `expectedRevision` seçili ilanın kendi revizyonuyla (2) aynı: ekran hâlâ
+ * moderatörün gördüğü revizyonu gösteriyor, henüz yeniden yüklenmedi. Sunucudaki
+ * güncel hâl 3. Kuyruk bilerek tek satır: iki "Detaylı incele" (satır + detay
+ * paneli) da aynı ilana yönelir, sorgu hangisini kastettiğini söylemek zorunda
+ * kalmaz.
+ */
+export const Conflict: Story = {
+  args: {
+    state: { status: 'success', data: sayfa([atanmamisIlan]) },
+    selectedListingId: atanmamisIlan.id,
+    onApprove: fn(),
+    onReject: fn(),
+    onRequestChanges: fn(),
+    decisionError: {
+      kind: 'revisionConflict',
+      expectedRevision: atanmamisIlan.revision,
+      currentRevision: atanmamisIlan.revision + 1,
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    /* Çubuk çakışmayı `danger` Alert ile bildiriyor; iki revizyon da yazılı. */
+    const uyari = canvas.getByRole('alert')
+    await expect(uyari).toHaveTextContent(/İlan siz incelerken değişti/)
+    await expect(uyari).toHaveTextContent(/2\. revizyona verdiniz/)
+    await expect(uyari).toHaveTextContent(/3\. revizyonda/)
+
+    /* Aynı damga aynı çakışmayı verir: tekrar deneme butonu yok. */
+    await expect(canvas.queryByRole('button', { name: /Tekrar dene/ })).not.toBeInTheDocument()
+
+    /* Kararlar duruyor: çakışma eylemleri kaldırmaz, yeniden bakmayı gerektirir. */
+    await expect(canvas.getByRole('button', { name: 'Onayla' })).toBeInTheDocument()
+
+    /* Doğru eylem: ilanı detayda açıp yeniden bakmak — kuyruğun kanalı onOpenDetail. */
+    await userEvent.click(
+      canvas.getAllByRole('button', { name: /Detaylı incele/ })[0] as HTMLElement,
+    )
+    await expect(args.onOpenDetail).toHaveBeenCalledWith(atanmamisIlan.id)
+  },
+}
+
+/**
+ * Hızlı karar uçuyor: seçili ilanın çubuğunda o butonda spinner, diğerleri kapalı.
+ *
+ * `ModerationActionBar`'ın `SubmittingLocksOtherActions` emsalinin aynısı — kuyruk
+ * yalnız `submittingAction` kanalını bağlıyor. Süren buton `aria-busy` ile
+ * ölçülüyor (yükleniyorken adını korur), kapalılar native `disabled` ile: `Button`
+ * gerçek `<button>`, orada `toBeDisabled` doğru araç (AGENTS.md: matcher Base UI
+ * kontrollerinde yalan söyler, native butonda değil).
+ */
+export const DecisionPending: Story = {
+  args: {
+    state: { status: 'success', data: sayfa([atanmamisIlan]) },
+    selectedListingId: atanmamisIlan.id,
+    onApprove: fn(),
+    onReject: fn(),
+    onRequestChanges: fn(),
+    submittingAction: 'approve',
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByRole('button', { name: 'Onayla' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
+    await expect(canvas.getByRole('button', { name: 'Reddet' })).toBeDisabled()
+    await expect(canvas.getByRole('button', { name: 'Düzeltme iste' })).toBeDisabled()
+  },
+}
 
 /* ------------------------------------------------------------------------- *
  * Zorunlu düzen varyantları — brifing 3.5
@@ -496,12 +608,13 @@ export const WideQueue: Story = {
  * ------------------------------------------------------------------------- */
 
 /**
- * Kuyruk hızlı karar **sunmuyor** — ve bu bir eksiklik değil, sözleşmenin sonucu.
+ * Kanal bağlı değilken kuyruk hızlı karar **sunmaz** — Faz 3 davranışı korunur.
  *
- * Brifing 2.4 hızlı onay/red/düzeltme istiyor ama `ApprovalQueueProps`'ta o üç
- * handler yok. Sonuçsuz buton sunmak yerine kuyruk detaya gönderiyor. Bu story
- * regresyon bekçisi: biri `ModerationActionBar`'ı handler'sız buraya koyarsa
- * düşer.
+ * Hızlı karar handler'ları (`onApprove`/`onReject`/`onRequestChanges`) opsiyonel;
+ * bu story hiçbirini vermiyor. Sonuçsuz buton sunmak yerine kuyruk yalnız detaya
+ * gönderir. Regresyon bekçisi: biri `ModerationActionBar`'ı handler'sız buraya
+ * koyarsa (ya da çubuğu kanal yokken kurarsa) düşer. Pozitif eşi
+ * `QuickDecisionOnSelected`.
  */
 export const QueueOffersNoQuickDecision: Story = {
   args: { state: { status: 'success', data: sayfa(kuyruk) } },

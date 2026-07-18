@@ -232,6 +232,40 @@ export const reportItem = style({
   minWidth: 0,
 })
 
+/**
+ * İlanlar sekmesinin gövdesi: tablo + (kanal bağlıysa) sayfalama.
+ *
+ * `Pagination` `DataTable`'ın hemen altında dikey akıyor; `gap` token ile,
+ * `minWidth: 0` tablonun kendi kaydırma kabının grid içinde küçülebilmesi için.
+ */
+export const listingsTab = style({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gap: vars.space[4],
+  minWidth: 0,
+})
+
+/** Yaptırım dialog'unun gövdesi: gerekçe + (askıda) süre alanı alt alta. */
+export const dialogBody = style({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gap: vars.space[4],
+  minWidth: 0,
+})
+
+/**
+ * Dialog footer'ının eylem şeridi: Vazgeç + onay, sağa yaslı.
+ *
+ * `flex-wrap` dar ekranda butonların taşmak yerine alt satıra inmesi için —
+ * `Modal` `sm` genişlikte iki buton 320 pikselde sığmayabilir.
+ */
+export const dialogActions = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
+  gap: vars.space[3],
+})
+
 /** Tablo hücresindeki uzun başlığın kartı taşırmaması için. */
 export const cellText = style({
   display: 'block',

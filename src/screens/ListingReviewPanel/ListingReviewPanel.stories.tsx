@@ -3,10 +3,13 @@ import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
 import {
   AdminPermission,
   AdminRole,
+  AssetModerationStatus,
   ModerationActorType,
   ModerationEventType,
   RejectionReason,
   ROLE_PERMISSIONS,
+  type AdminNote,
+  type Listing,
   type ModerationEvent,
   type ResidentialListing,
 } from '../../types/domain'
@@ -16,9 +19,11 @@ import {
   emptyModerationHistory,
   emptyReportFixtures,
   kadikoyApartmentReports,
+  mertYildizSanctions,
   pendingVillaHistory,
   residentialPendingVilla,
   residentialPublishedApartment,
+  suspendedIndividual,
   verifiedRealEstateOffice,
 } from '../../fixtures'
 import type {
@@ -124,6 +129,76 @@ const DUZENLENMIS: ListingReviewData = {
   reports: emptyReportFixtures,
   seller: activeIndividualOwner,
   previousRevision: residentialPendingVilla,
+}
+
+/* ------------------------------------------------------------------ */
+/* Faz 3 sonrası (b) turu — story-yerel fixture'lar                    */
+/* Hepsi mevcut Listing'lerden türetildi; uydurma domain yok.          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Villanın **tam** revizyon geçmişi, en yeni başta.
+ *
+ * `[0]` yürürlükteki (VILLA_YENI), `[1]` bir önceki (residentialPendingVilla).
+ * Ekran karşılaştırmayı `[1]` ile kuruyor; `revisionHistory` verilince
+ * `previousRevision`'ın işini o üstleniyor (sözleşme: ikisi de verilirse
+ * `revisionHistory` kazanır). Faz 3'te yalnız _n-1_ vardı, RAPOR EDİLMİŞTİ.
+ */
+const VILLA_REVIZYON_GECMISI: Listing[] = [VILLA_YENI, residentialPendingVilla]
+
+/**
+ * İlana iliştirilmiş admin notları, en yeni başta.
+ *
+ * `AdminNote` **backend gelince kesinleşir**; fixture story-yerel. `authorName`
+ * dolu — ekran adı, ham `authorId`'yi değil, onu gösteriyor.
+ */
+const ADMIN_NOTLARI: AdminNote[] = [
+  {
+    id: 'story-note-2',
+    listingId: residentialPendingVilla.id,
+    authorId: 'admin-moderator-1',
+    authorName: 'Elif Kaya',
+    text: 'Havuz ruhsatı açıklamada geçiyor ama belge yüklenmemiş; ilan sahibinden istendi.',
+    createdAt: '2026-07-15T11:20:00+03:00',
+  },
+  {
+    id: 'story-note-1',
+    listingId: residentialPendingVilla.id,
+    authorId: 'admin-support-1',
+    authorName: 'Deniz Acar',
+    text: 'İlan sahibi telefonla arandı; açıklamadaki net metrekare düzeltilecek.',
+    createdAt: '2026-07-14T09:10:00+03:00',
+  },
+]
+
+/**
+ * Benzer / mükerrer ilan adayları — mevcut fixture ve ondan türetilmiş bir kopya.
+ *
+ * `similarListings` **backend gelince kesinleşir** (benzerlik skoru taşınırsa
+ * kartın yanına eklenir); şimdilik düz `Listing[]`.
+ */
+const BENZER_ILANLAR: Listing[] = [
+  residentialPublishedApartment,
+  {
+    ...residentialPublishedApartment,
+    id: 'listing-similar-konyaalti-villa',
+    listingNo: '1245790200',
+    title: "Konyaaltı'nda Havuzlu Villa — Benzer İlan",
+  },
+]
+
+/**
+ * Kapak fotoğrafı `Pending` — foto moderasyonda "Uygun" butonu etkin olsun diye.
+ *
+ * Villa fixture'ında bütün fotoğraflar `Approved` ve galeri onaylanmış fotoğrafın
+ * "Uygun" butonunu kilitliyor; bu türev kapağı beklemeye alıp eylemi ölçülebilir
+ * kılıyor.
+ */
+const VILLA_FOTO_MODERASYON: ResidentialListing = {
+  ...residentialPendingVilla,
+  photos: residentialPendingVilla.photos.map((photo) =>
+    photo.isCover ? { ...photo, moderationStatus: AssetModerationStatus.Pending } : photo,
+  ),
 }
 
 /**
@@ -831,5 +906,251 @@ export const NoHorizontalOverflow: Story = {
   globals: { viewport: { value: 'mobile320' } },
   play: async ({ canvasElement }) => {
     await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth)
+  },
+}
+
+/* ------------------------------------------------------------------ */
+/* Faz 3 sonrası (b) turu — yeni kanallar                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Yaptırım geçmişi: satıcı sicilli, `SellerPanel` `risk` varyantına geçiyor.
+ *
+ * `sanctions` verilince panel `detailed`'dan `risk`'e dönüyor ve sicili —
+ * yürürlükteki **ve** kaldırılmış kayıtları — gerekçeleriyle gösteriyor (Faz
+ * 3'te kanalsızdı, gösteremiyordu). `UserSanction.reason` iç gerekçe metni ve
+ * bir yetki sınırı: bu ekran veriyi `state`'ten aldığına göre sicili getiren
+ * container zaten yetkiliyi elemiş — panel yetki bilmez.
+ *
+ * Satıcı bilerek `suspendedIndividual` (sicilin sahibi Mert Yıldız);
+ * `mertYildizSanctions` **hesap başına** sicil, en yeni başta.
+ */
+export const SanctionHistory: Story = {
+  args: {
+    state: {
+      status: 'success',
+      data: { ...INCELEMEDEKI, seller: suspendedIndividual, sanctions: mertYildizSanctions },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('Yaptırım geçmişi')).toBeInTheDocument()
+    /* Yürürlükteki + kaldırılmış kaydın gerekçeleri (yetkili görünüm). */
+    await expect(canvas.getByText(/ısrarlı spam/)).toBeInTheDocument()
+    await expect(canvas.getByText(/itiraz üzerine kaldırıldı/)).toBeInTheDocument()
+    /* Kaldırılmış kayıt "Kaldırıldı" diye işaretli, listeden düşürülmemiş. */
+    await expect(canvas.getByText('Kaldırıldı')).toBeInTheDocument()
+  },
+}
+
+/**
+ * Tam revizyon geçmişi: karşılaştırma `revisionHistory[1]` ile kuruluyor.
+ *
+ * `previousRevision` yerine `revisionHistory` verildi; ekran `[1]`'i (bir
+ * önceki) `ListingFacts`'in `comparison`'ına geçiriyor. İki *eski* revizyonu
+ * seçip karşılaştırmak (skor > 1 dizin) sözleşmenin işaret ettiği yetenek ama
+ * revizyon seçici kanalı yok — RAPOR EDİLDİ.
+ */
+export const RevisionHistory: Story = {
+  args: {
+    state: {
+      status: 'success',
+      data: {
+        listing: VILLA_YENI,
+        events: VILLA_DUZENLEME_GECMISI,
+        reports: emptyReportFixtures,
+        seller: activeIndividualOwner,
+        revisionHistory: VILLA_REVIZYON_GECMISI,
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /*
+      Comparison açık: `ListingFacts` üç sütunlu (Alan / Önceki / Yeni) tablolar
+      basıyor. Sütun başlıklarının varlığı karşılaştırmanın `revisionHistory[1]`
+      ile kurulduğunu doğruluyor (verilmese `sections` varyantı çizilirdi, sütun
+      olmazdı).
+    */
+    await expect(
+      canvas.getByRole('heading', { name: 'İlan bilgileri', level: 2 }),
+    ).toBeInTheDocument()
+    await expect(canvas.getAllByRole('columnheader', { name: 'Önceki' }).length).toBeGreaterThan(0)
+    await expect(canvas.getAllByRole('columnheader', { name: 'Yeni' }).length).toBeGreaterThan(0)
+  },
+}
+
+/**
+ * Admin notları bölümü, en yeni başta.
+ *
+ * `undefined` bölümü hiç çizmiyor; `[]` "not yok" der. Yazar adı ham
+ * `authorId`'den değil `authorName`'den geliyor. Faz 3'te kanalsızdı.
+ */
+export const AdminNotes: Story = {
+  args: {
+    state: { status: 'success', data: { ...INCELEMEDEKI, adminNotes: ADMIN_NOTLARI } },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByRole('heading', { name: 'Admin notları', level: 2 }),
+    ).toBeInTheDocument()
+    await expect(canvas.getByText('Elif Kaya')).toBeInTheDocument()
+    await expect(canvas.getByText('Deniz Acar')).toBeInTheDocument()
+    /*
+      Admin notuna ÖZGÜ metinle sorgulanıyor: moderasyon geçmişindeki olay notu
+      da "Havuz ruhsatı" ile başlıyor ("...belge ekli değil. Satıcıdan istendi"),
+      dolayısıyla `/Havuz ruhsatı/` iki eleman bulup düşüyordu. `belge yüklenmemiş`
+      yalnız admin notunda geçiyor.
+    */
+    await expect(canvas.getByText(/belge yüklenmemiş/)).toBeInTheDocument()
+  },
+}
+
+/**
+ * Boş admin notları listesi: veri geldi, kayıt yok.
+ *
+ * `[]` ile `undefined` ayrı: boş dizi "not yok" diye yazılır (bölüm çizilir),
+ * `undefined` bölümü hiç çizmez.
+ */
+export const AdminNotesEmpty: Story = {
+  args: {
+    state: { status: 'success', data: { ...INCELEMEDEKI, adminNotes: [] } },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByRole('heading', { name: 'Admin notları', level: 2 }),
+    ).toBeInTheDocument()
+    await expect(canvas.getByText('Bu ilana eklenmiş admin notu yok')).toBeInTheDocument()
+  },
+}
+
+/**
+ * Benzer ilan önerileri: "yeni sekmede aç" `onOpenSimilar`'a bağlı.
+ *
+ * `onOpenSimilar` verilmezse öneriler salt okunur görünür (buton çıkmaz). İlk
+ * kart `residentialPublishedApartment`; butona basınca ekran onun `id`'sini
+ * bildiriyor — açma işini sayfa katmanı yapar.
+ */
+export const SimilarListings: Story = {
+  args: {
+    state: { status: 'success', data: { ...INCELEMEDEKI, similarListings: BENZER_ILANLAR } },
+    onOpenSimilar: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByRole('heading', { name: 'Benzer ilanlar', level: 2 }),
+    ).toBeInTheDocument()
+
+    const [ilkAc] = canvas.getAllByRole('button', { name: 'Yeni sekmede aç' })
+    await userEvent.click(ilkAc!)
+    await expect(args.onOpenSimilar).toHaveBeenCalledWith(residentialPublishedApartment.id)
+  },
+}
+
+/**
+ * Benzer ilanlar salt okunur: `onOpenSimilar` yok, "yeni sekmede aç" da yok.
+ *
+ * Sonuçsuz buton sunmanın anlamı yok; öneriler yine görünür, yalnız eylemsiz.
+ */
+export const SimilarListingsReadOnly: Story = {
+  args: {
+    state: { status: 'success', data: { ...INCELEMEDEKI, similarListings: BENZER_ILANLAR } },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByRole('heading', { name: 'Benzer ilanlar', level: 2 }),
+    ).toBeInTheDocument()
+    await expect(canvas.queryByRole('button', { name: 'Yeni sekmede aç' })).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Fotoğraf bazlı moderasyon: `onPhotoModerate` galeriye kontrolleri açıyor.
+ *
+ * Verilmezse galeri salt okunur (Faz 3). Sözleşme tek boolean taşıyor
+ * (`appropriate`); ekran onu galerinin onay/red köprüsüne bağlıyor — "Uygun"
+ * → `true`. Kapak bu story'de `Pending` olduğu için "Uygun" etkin.
+ */
+export const PhotoModeration: Story = {
+  args: {
+    state: { status: 'success', data: { ...INCELEMEDEKI, listing: VILLA_FOTO_MODERASYON } },
+    onPhotoModerate: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Uygun' }))
+    await expect(args.onPhotoModerate).toHaveBeenCalledWith(
+      'listing-residential-konyaalti-villa-photo-1',
+      true,
+    )
+  },
+}
+
+/**
+ * Foto moderasyon kapalı — **varsayılan hâl**.
+ *
+ * `onPhotoModerate` verilmeyince galeri salt okunur: onay/red butonları hiç
+ * çizilmiyor (Faz 3 davranışı). Kontrolsüz galeri sonuçsuz buton sunmuyor.
+ */
+export const PhotoModerationReadOnly: Story = {
+  args: { state: BASARILI },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryByRole('button', { name: 'Uygun' })).not.toBeInTheDocument()
+    await expect(canvas.queryByRole('button', { name: 'Uygunsuz' })).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Kuyruk gezinme: önceki / sonraki ilan butonları.
+ *
+ * Yalnız kuyruk bağlamında (handler verilince) çıkar. `<nav aria-label="Kuyruk
+ * gezinme">` gerçek bir landmark; sayfada başka `<nav>` yok, benzersiz.
+ */
+export const QueueNavigation: Story = {
+  args: {
+    state: BASARILI,
+    onPreviousListing: fn(),
+    onNextListing: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Sonraki ilan' }))
+    await expect(args.onNextListing).toHaveBeenCalled()
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Önceki ilan' }))
+    await expect(args.onPreviousListing).toHaveBeenCalled()
+  },
+}
+
+/**
+ * Kuyruğun sonu: yalnız "Önceki ilan" verildi, "Sonraki ilan" yok.
+ *
+ * Handler'ın yokluğu bir durum — son ilanda "sonraki" yoktur. Boş `<span>` sağ
+ * ucu tutuyor, tek buton solda kalıyor.
+ */
+export const QueueNavigationLastItem: Story = {
+  args: {
+    state: BASARILI,
+    onPreviousListing: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByRole('button', { name: 'Önceki ilan' })).toBeInTheDocument()
+    await expect(canvas.queryByRole('button', { name: 'Sonraki ilan' })).not.toBeInTheDocument()
   },
 }

@@ -226,3 +226,26 @@ export const messageIcon = style({
 export const messageAction = style({
   marginBlockStart: vars.space[2],
 })
+
+/**
+ * Destek ekibine okunacak referans kodunun satırı (yalnız forbidden/fatalError).
+ *
+ * `text.muted`: hata mesajının altında ikincil bir bilgi — description ile aynı
+ * ton. Kodun kendisi `supportCodeValue`'da vurgulanır.
+ */
+export const supportCode = style({
+  margin: 0,
+  color: vars.color.text.muted,
+  fontSize: vars.font.size.sm,
+  lineHeight: vars.lineHeight.body,
+})
+
+/**
+ * Kodun kendisi. Mono yazı basamak karışıklığını önler (0/O, 1/l); `user-select:
+ * all` tek tıkla seçtirir — kullanıcı kodu kopyalayıp destek ekibine okuyabilmeli.
+ * Emsal: ErrorState'in `codeValue`'i.
+ */
+export const supportCodeValue = style({
+  fontFamily: vars.font.family.mono,
+  userSelect: 'all',
+})

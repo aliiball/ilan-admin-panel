@@ -8,6 +8,14 @@ const ORNEK_PAROLA = 'Deneme-Parola-2026'
 
 const GIRIS_HATASI = 'E-posta veya parola hatalı.'
 
+/**
+ * `fatalError` mesajı ve ona eşlik eden destek kodu. Kod sabit yazılır
+ * (`new Date()` YASAK — her koşuda yeniden çizmek Chromatic'i titretirdi); harf
+ * ve rakam karışık, mono yazının basamak ayrımını (0/O, 1/l) görünür kılar.
+ */
+const FATAL_HATASI = 'İşleminiz kaydedilirken beklenmeyen bir hata oluştu. Tekrar deneyin.'
+const DESTEK_KODU = 'ERR-5F3A-2C7B'
+
 /** Türkçe regex'i küçük harfle yazma tuzağı: buton "Giriş yap", `/giriş yap/` eşleşmez. */
 const GIRIS_BUTONU = 'Giriş yap'
 const MARKA_ADI = 'İlan Yönetim Paneli'
@@ -87,6 +95,7 @@ const meta = {
     },
     loading: { control: 'boolean' },
     error: { control: 'text' },
+    errorCode: { control: 'text' },
   },
 } satisfies Meta<typeof AuthScreen>
 
@@ -190,17 +199,21 @@ export const SubmitReportsCredentialsOnce: Story = {
 }
 
 /**
- * Hata duyurulmalı ve alanlar geçersiz işaretlenmeli.
+ * Hata duyurulmalı ve **iki alan da** kırmızı (geçersiz) işaretlenmeli.
  *
  * `role="alert"`: mesaj ekran okuyucuya **anında** gider, kullanıcı sekmeyle
  * oraya varana kadar beklemez. Alanın kendi `error` prop'u bunu yapamaz —
  * `Field.Error` düz bir `<div>` ve yalnız `aria-describedby` ile bağlı (Base UI
  * `FieldError.js` ile doğrulandı), yani ancak odak alana gelince okunur.
  *
- * Alanlarda `aria-invalid` ölçülüyor, `data-invalid` değil: `data-invalid`
- * yalnız `error` prop'u doluyken doğuyor ve o prop mesajı kutunun **altına da**
- * yazıyor — aynı cümle Alert ile birlikte üç kez okunurdu. Sözleşme boşluğu
- * raporlandı (`InputProps` "mesajsız geçersiz"i ifade edemiyor).
+ * Boşluk **KAPANDI**: eskiden yalnız `aria-invalid` ölçülebiliyordu çünkü
+ * `data-invalid` yalnız `error` prop'u doluyken doğuyordu — ve o prop mesajı
+ * kutunun altına da yazıp aynı cümleyi üç kez okuturdu. `InputProps.invalid`
+ * (mesajsız geçersiz) eklendikten sonra kutular **kırmızı kenarlık** alıyor;
+ * artık kenarlığın kaynağı olan `data-invalid` DOM'dan gerçekten ölçülebiliyor.
+ *
+ * İki alan da işaretli, yalnız biri değil: yalnız parolayı kırmızı yapmak "bu
+ * e-posta kayıtlı"yı sızdırırdı. Alan altında metin YOK (mesaj yalnız Alert'te).
  */
 export const LoginErrorAnnouncesAndMarksFields: Story = {
   args: { error: GIRIS_HATASI, onSubmit: fn() },
@@ -209,11 +222,24 @@ export const LoginErrorAnnouncesAndMarksFields: Story = {
 
     await expect(canvas.getByRole('alert')).toHaveTextContent(GIRIS_HATASI)
 
-    await expect(canvas.getByRole('textbox', { name: 'E-posta' })).toHaveAttribute(
-      'aria-invalid',
-      'true',
-    )
-    await expect(canvas.getByLabelText(PAROLA_ETIKETI)).toHaveAttribute('aria-invalid', 'true')
+    const eposta = canvas.getByRole('textbox', { name: 'E-posta' })
+    const parola = canvas.getByLabelText(PAROLA_ETIKETI)
+
+    /* aria-invalid: ekran okuyucuya geçersizliği bildiren işaret. */
+    await expect(eposta).toHaveAttribute('aria-invalid', 'true')
+    await expect(parola).toHaveAttribute('aria-invalid', 'true')
+
+    /*
+      Kırmızı kenarlık artık DOM'dan ölçülebiliyor: kenarlığı çizen kural
+      `&[data-invalid]` ve o işaret kutudadır (input'un atası). İki kutuda da
+      bulunması, "iki alan da kırmızı" iddiasının görsel karşılığıdır.
+    */
+    await expect(eposta.closest('[data-invalid]')).not.toBeNull()
+    await expect(parola.closest('[data-invalid]')).not.toBeNull()
+
+    /* Mesaj yalnız Alert'te: alanların altında ikinci/üçüncü kopya YOK. */
+    await expect(eposta).not.toHaveAttribute('aria-describedby')
+    await expect(parola).not.toHaveAttribute('aria-describedby')
   },
 }
 
@@ -376,5 +402,40 @@ export const ForbiddenErrorReplacesDefaultDescription: Story = {
 
     await expect(canvas.getByText(/başka bir bölgenin moderasyon kuyruğunda/)).toBeInTheDocument()
     await expect(canvas.queryByText(/Hesabınızın rolü bu sayfayı/)).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * `fatalError`'da destek kodu, hata mesajının yanında görünür ve **seçilebilir**.
+ *
+ * Faz 3'te bu kanalsızdı: `error` düz `string` olduğu için `UiError.code`
+ * karşılığı yoktu ve destek kodu gösterilemiyordu (AGENTS'ta açık madde).
+ * Ayrı `errorCode` alanı boşluğu kapattı.
+ *
+ * İki şey ölçülüyor: kod DOM'da (hata mesajıyla birlikte) ve `user-select: all`
+ * ile tek tıkla seçilebilir — kullanıcı kodu kopyalayıp destek ekibine
+ * okuyabilmeli. Seçilebilirlik `getComputedStyle` ile ölçülür (StatusBadge'in
+ * hesaplanmış stil emsali); mono yazı gibi görsel iddiaların play'de karşılığı
+ * budur.
+ */
+export const FatalErrorWithSupportCode: Story = {
+  args: {
+    mode: 'fatalError',
+    error: FATAL_HATASI,
+    errorCode: DESTEK_KODU,
+    onPrimaryAction: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Hata mesajı ve kod bir arada: kod, mesajın yerine değil yanına gelir. */
+    await expect(canvas.getByText(FATAL_HATASI)).toBeInTheDocument()
+
+    /* getByText kodu saran <span>'i döndürür (p'nin textContent'i etiketi de içerir). */
+    const kod = canvas.getByText(DESTEK_KODU)
+    await expect(kod).toBeInTheDocument()
+
+    /* Seçilebilir: `user-select: all` — kopyalanıp destek ekibine okunabilmeli. */
+    await expect(getComputedStyle(kod).userSelect).toBe('all')
   },
 }

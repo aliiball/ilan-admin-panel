@@ -13,9 +13,10 @@ import { EmptyState } from '../../components/composites/EmptyState'
 import { ErrorState } from '../../components/composites/ErrorState'
 import { ATTRIBUTE_DATA_TYPE_LABEL, BOOLEAN_IS_LABEL } from '../../domain/labels'
 import { formatDateTime } from '../../utils/formatDateTime'
-import type { CategoryAttributeDefinition } from '../../types/domain'
+import { AdminPermission, type CategoryAttributeDefinition } from '../../types/domain'
 import type {
   CategoryAttributePageProps,
+  CategoryPublishError,
   CategoryTreeNode,
   ColumnDef,
   UiError,
@@ -83,6 +84,45 @@ function atalar(nodes: CategoryTreeNode[], hedefId: string): string[] | undefine
 /** Boolean alanın `error`/`code` gibi koşullu prop'a çevrimi (`exactOptionalPropertyTypes`). */
 const kodProp = (hata: UiError): { code?: string } =>
   hata.code !== undefined ? { code: hata.code } : {}
+
+/**
+ * Yayın reddinin sunumu; `ModerationActionBar`'ın `kararHatasiSunumu`'nun
+ * kategori karşılığı.
+ *
+ * `publishError` `state`'ten **ayrı bir eksen** (`CategoryPublishError`'ın kendi
+ * gerekçesi): ağaç sorunsuz yüklüyken yayın reddedilebilir. Bu yüzden hata bir
+ * `Alert` olarak ağacın **üstünde** duruyor, ağacı hata bloğuna çevirmiyor.
+ *
+ * - `revisionConflict`: tekrar denemek **doğru değil** (aynı taslak aynı çakışmayı
+ *   verir); doğru eylem yeniden yüklemek. Bu yüzden `reloadable` — sunum `onRetry`'ye
+ *   bağlı bir "Yeniden yükle" düğmesi taşır, "tekrar dene" değil. Metin çağırandan
+ *   (`message`) geliyor: hangi revizyonun çakıştığını sunucu bilir.
+ * - `validation`: sunucunun reddettiği alan hataları ayrıca `editorValidationErrors`
+ *   ile editöre akıyor; bu üst durum yalnız "yayın düştü" der.
+ * - `failed`: geçici/bilinmeyen sunucu hatası; metni `UiError` taşıyor. Yeniden
+ *   deneme araç çubuğundaki yayın düğmesinde zaten açık.
+ */
+type YayinHataSunumu = { title: string; description: string; reloadable: boolean }
+
+function yayinHatasiSunumu(hata: CategoryPublishError): YayinHataSunumu {
+  if (hata.kind === 'revisionConflict') {
+    return {
+      title: 'Değişiklikler yayınlanamadı: kategori siz düzenlerken değişti',
+      description: hata.message,
+      reloadable: true,
+    }
+  }
+
+  if (hata.kind === 'validation') {
+    return {
+      title: 'Değişiklikler yayınlanamadı: alanları düzeltin',
+      description: hata.message,
+      reloadable: false,
+    }
+  }
+
+  return { title: hata.error.title, description: hata.error.message, reloadable: false }
+}
 
 /**
  * Öznitelik listesinin sütunları.
@@ -203,19 +243,19 @@ function tabloSutunlari(
  *
  * ## Sözleşmenin sustuğu yerler ve verilen kararlar
  *
- * - **`editorMode` verilmezse `readOnly`.** Yetki listesi `CategoryAttributePageProps`'ta
- *   yok; `category:manage` yalnız `superAdmin`'de (brifing 1.4) ve bu ekranda
- *   yetkiyi taşıyan tek şey `editorMode`. Varsayılanı `edit` yapmak, mod'u
- *   göndermeyi unutan çağırana sessizce düzenleme yetkisi verirdi. Yetkisiz
- *   kullanıcıya **`disabled` editör değil `readOnly` editör** gösteriliyor:
- *   kilitli kutu okunmak için tasarlanmamıştır (bkz. `AttributeEditor`).
- * - **`saving` yalnız taslak kaydetmeyi kapsar.** `AttributeEditorProps.saving`'in
- *   sözleşmesi birebir bunu diyor ("Kaydetme sürerken alanları kilitler").
- *   Brifing 2.7'nin `publishPending` durumunun kanalı **yok** ve `saving` onu
- *   kapsamıyor: kapsasaydı yayın sırasında editör "kaydediliyor" der, kutular
- *   sebepsiz kilitlenirdi. Yayın düğmesi `saving` iken kapalı (uçan bir kayıt
- *   varken taslak oturmamıştır) ama spinner **göstermiyor** — spinner "yayın
- *   uçuyor" demek olurdu ve bunu bilmiyoruz.
+ * - **`category:manage` kapısı `availablePermissions`.** İzni olmayana editör
+ *   **`disabled` değil `readOnly`** verilir (kilitli kutu okunmak için değildir)
+ *   ve düzenleme eylemleri — yayın düğmesi, editörün "Kaydet"i — hiç render
+ *   edilmez. İzin listesi **verilmezse** ekran salt okunur davranır: modu
+ *   göndermeyi unutan çağırana sessizce yetki vermemek (`editorMode`'un
+ *   varsayılanının `readOnly` olmasıyla aynı gerekçe). `category:manage` yalnız
+ *   `superAdmin`'de (brifing 1.4). (Faz 3'te bu kanal yoktu, RAPOR EDİLMİŞTİ.)
+ * - **`saving` taslak kaydını, `publishing` yayını kapsar — ayrı.**
+ *   `AttributeEditorProps.saving` yalnız kaydetmeyi kilitliyor ("Kaydetme
+ *   sürerken alanları kilitler"); yayının kendi bayrağı `publishing` var ve
+ *   spinner **yayın düğmesinde** çıkıyor (editörde değil — yayın kutuları
+ *   sebepsiz kilitlemez). Düğme `saving` iken de kapalı: uçan bir kayıt varken
+ *   taslak oturmamıştır. (Faz 3'te `publishPending` kanalsızdı, RAPOR EDİLMİŞTİ.)
  * - **Listeden bir öznitelik açmak `onEditorChange`'e düşer.** `onAttributeSelect`
  *   diye bir kanal yok; editörün değerini değiştirebilen tek kanal `onEditorChange`
  *   ve "editörün değeri değişti" tam olarak bu. Sayfa `editorMode`'u **kendisi
@@ -227,23 +267,29 @@ function tabloSutunlari(
  *   düğüme göre **süzemez**; süzülmüş hâlde gelmesi gerekir. Kimliği ayrıştırmak
  *   (`konut-daire`) bir story kalıbını sözleşme sanmak olurdu.
  *
- * ## Kanalı olmayan brifing gereksinimleri (uydurulmadı)
+ * ## Faz 3 sonrası (b) turunda kapatılan boşluklar
  *
- * `conflict`, `publishPending` ve `validationError` durumları; "öznitelik
- * ekleme", "önizleme", "yayın öncesi etkilenen ilan sayısı" eylemleri; taslağı
- * geri alma ("Vazgeç") ve "son güncelleyen admin" — hiçbirinin prop'u yok.
+ * `conflict` (`publishError`, `revisionConflict`), `publishPending`
+ * (`publishing`), `validationError` (`editorValidationErrors` →
+ * `AttributeEditorProps.validationErrors`) ve "yayın öncesi etkilenen ilan
+ * sayısı" (`affectedListingCount`) artık kanallı. **Yayın reddi `state`'ten ayrı
+ * bir eksen** (`CategoryPublishError`, `ModerationDecisionError`'ın kardeşi):
+ * ağaç sorunsuz yüklüyken yayın düşebilir ve reddedilen yayın ekrandaki ağacı
+ * hata bloğuna çevirmez — bir `Alert` olarak üstte durur. `revisionConflict`'in
+ * doğru eylemi "tekrar dene" değil "yeniden yükle" (`onRetry`): aynı taslak aynı
+ * çakışmayı verir.
  *
- * `validationError` özellikle can sıkıcı: `AttributeEditor` onu gösterecek
- * prop'u taşıyor (`validationErrors`) ama bu ekranın onu **besleyecek** bir
- * alanı yok ve kendi de üretemez — "bu anahtar zaten kullanılıyor" sunucuyu
- * gerektirir, ekran veri çekmez. Eksik olan tek şey bir
- * `editorValidationErrors?: Record<string, string>` prop'u.
+ * ## Hâlâ kanalı olmayanlar (uydurulmadı)
  *
- * `onPublish`'in **kapsamı da belirsiz**: argüman almıyor, dolayısıyla bir
- * kapsam taşımıyor. Bu yüzden yayın düğmesi seçili kategorinin başlığının
- * yanında değil, sayfanın araç çubuğunda duruyor ve onay metni hiçbir kategori
- * adı vermiyor — sözleşmenin söylemediği bir kapsamı ima etmek, "yalnız Konut
- * yayınlanacak" sanan kullanıcıya bütün taslakları yayınlatırdı.
+ * "Öznitelik ekleme" ve "önizleme" eylemleri; taslağı geri alma ("Vazgeç") ve
+ * "son güncelleyen admin" — hiçbirinin prop'u yok.
+ *
+ * `onPublish`'in **kapsamı belirsiz**: argüman almıyor, dolayısıyla bir kapsam
+ * taşımıyor. Bu yüzden yayın düğmesi seçili kategorinin başlığının yanında değil,
+ * sayfanın araç çubuğunda duruyor ve onay metni hiçbir kategori adı vermiyor —
+ * sözleşmenin söylemediği bir kapsamı ima etmek, "yalnız Konut yayınlanacak"
+ * sanan kullanıcıya bütün taslakları yayınlatırdı. `affectedListingCount` onay
+ * metnine "N ilanı etkileyecek" ekliyor ama kapsamı hâlâ genel.
  *
  * Ayrıntı story dosyasında ve raporda.
  *
@@ -263,10 +309,15 @@ function tabloSutunlari(
  */
 export function CategoryAttributePage({
   state,
+  availablePermissions,
   editorValue,
   editorMode,
   dirty = false,
   saving = false,
+  publishing = false,
+  publishError,
+  editorValidationErrors,
+  affectedListingCount,
   onNodeSelect,
   onEditorChange,
   onSave,
@@ -317,6 +368,17 @@ export function CategoryAttributePage({
 
   const seciliDugum = seciliId !== undefined ? dugumBul(agac, seciliId) : undefined
   const oznitelikler = veri?.attributes ?? []
+
+  /*
+    `category:manage` kapısı. İzin listesi **verilmezse** ekran salt okunur
+    davranır (`?? false`): modu göndermeyi unutan çağırana sessizce yetki vermemek
+    (`editorMode`'un varsayılanının `readOnly` olmasıyla aynı gerekçe). İzni
+    olmayana editör **`readOnly`** verilir ve düzenleme eylemleri (yayın düğmesi,
+    editörün "Kaydet"i) hiç render edilmez — kilitli (`disabled`) editör değil:
+    o "şu an değiştirilemez" der, "yetkin yok" değil (sözleşme JSDoc'u).
+  */
+  const yonetebilir = availablePermissions?.includes(AdminPermission.CategoryManage) ?? false
+  const editorModu = yonetebilir ? (editorMode ?? 'readOnly') : 'readOnly'
 
   const dugumSecildi = (id: string) => {
     /* Seçili düğüme tekrar basmak bir şeyi atmıyor; dar ekranda detaya geçiriyor. */
@@ -372,11 +434,13 @@ export function CategoryAttributePage({
     }
 
     /*
-      Dialog onayla kapanıyor. ConfirmDialog'un sözleşmesi "kapatmak çağıranın
-      işi: işlem başarısız olursa dialog açık kalıp hatayı gösterebilmeli" diyor
-      ama bu ekranda gösterilecek hata **yok**: ne `publishPending` ne de bir
-      yayın hatası kanalı var (bkz. component JSDoc'u). Kanal gelince dialog
-      `loading` ile açık kalmalı.
+      Dialog onayla kapanıyor ve sonucu `publishError` bildiriyor —
+      `ModerationActionBar`'ın çözümünün aynısı: yayın uçarken spinner araç
+      çubuğundaki düğmede (`publishing`), reddedilen yayın ise ağacın üstünde bir
+      `Alert` (`yayinHatasi`). Dialog'u `loading` ile açık tutmak yerine bu kalıbı
+      seçtik çünkü `revisionConflict`'in doğru eylemi dialog'da "tekrar dene"
+      değil, ekranda "yeniden yükle": kullanıcı taslağını yeni tabana göre gözden
+      geçirmeli.
     */
     setOnayAcik(false)
   }
@@ -387,13 +451,30 @@ export function CategoryAttributePage({
    * `onayIstegi` kapanıştan sonra da duruyor, dolayısıyla bu metin animasyon
    * boyunca sabit kalır.
    */
+  /*
+    Yayın metni parçalardan kuruluyor: temel cümle, "N ilanı etkileyecek" ve
+    kirli taslak uyarısı ayrı ayrı eklenebilir. `affectedListingCount` **ekran
+    saymaz** — hangi ilanların bu şemaya bağlı olduğunu sunucu bilir
+    (`node.count` yanlış cevap: o kategorideki toplam ilan, şemadan etkilenen
+    değil). Sayı `toLocaleString('tr-TR')` ile biçimleniyor (reponun sayı kalıbı).
+  */
+  const yayinParcalari = [
+    'Kaydedilmiş öznitelik tanımları yayına alınır ve yeni ilanlarda hemen geçerli olur.',
+  ]
+  if (affectedListingCount !== undefined) {
+    yayinParcalari.push(
+      `Bu değişiklik ${affectedListingCount.toLocaleString('tr-TR')} ilanı etkileyecek.`,
+    )
+  }
+  if (dirty) {
+    yayinParcalari.push('Editördeki kaydedilmemiş değişiklikleriniz bu yayına dahil edilmez.')
+  }
+
   const onayMetni =
     onayIstegi?.tur === 'yayin'
       ? {
           title: 'Değişiklikleri yayınla',
-          description: dirty
-            ? 'Kaydedilmiş öznitelik tanımları yayına alınır ve yeni ilanlarda hemen geçerli olur. Editördeki kaydedilmemiş değişiklikleriniz bu yayına dahil edilmez.'
-            : 'Kaydedilmiş öznitelik tanımları yayına alınır ve yeni ilanlarda hemen geçerli olur.',
+          description: yayinParcalari.join(' '),
           confirmLabel: 'Yayınla',
           tone: 'neutral' as const,
         }
@@ -528,10 +609,17 @@ export function CategoryAttributePage({
           ) : (
             <AttributeEditor
               value={editorValue}
-              /* Mod verilmezse `readOnly`: bkz. component JSDoc'u. */
-              mode={editorMode ?? 'readOnly'}
+              /* Mod verilmezse `readOnly`; `category:manage` yoksa da `readOnly`
+                 (bkz. `yonetebilir` ve component JSDoc'u). */
+              mode={editorModu}
               dirty={dirty}
               saving={saving}
+              /* Sunucunun `onSave`/`onPublish` sonrası döndürdüğü alan hataları.
+                 Ekran doğrulama yapmaz; yalnız sonucu editöre geçirir. Koşullu
+                 spread: `exactOptionalPropertyTypes` (TS2375). */
+              {...(editorValidationErrors !== undefined && {
+                validationErrors: editorValidationErrors,
+              })}
               onChange={(next) => onEditorChange(next)}
               onSave={() => onSave()}
               /* `onCancel` **bilerek yok**: sayfanın taslağı geri alacak bir
@@ -647,9 +735,37 @@ export function CategoryAttributePage({
 
   const icerikVar = state.status === 'success' || state.status === 'partialSuccess'
   const bayat = state.status === 'success' && state.stale === true
+  const yayinHatasi = publishError !== undefined ? yayinHatasiSunumu(publishError) : null
 
   return (
     <div className={css.root} data-mobil-pano={mobilPano}>
+      {yayinHatasi !== null ? (
+        /*
+          Yayın reddi ağacın **üstünde**, `state`'ten ayrı bir eksende: ağaç
+          sorunsuz yüklüyken yayın düşebilir ve reddedilen yayın ekrandaki ağacı
+          hata bloğuna çevirmemeli (`ModerationActionBar`'ın `decisionError`'ıyla
+          aynı aile). `danger` + `role="alert"`: kullanıcı yayınladığını sanıp
+          devam etmemeli. Kapatılabilir değil — sorun kalıcı, kapatmak çözmez.
+
+          `revisionConflict`'te eylem "Yeniden yükle" (`onRetry`), "tekrar dene"
+          değil: aynı taslak aynı çakışmayı verir, doğru adım yeni tabana göre
+          taslağı gözden geçirmek.
+        */
+        <Alert
+          tone="danger"
+          variant="soft"
+          title={yayinHatasi.title}
+          description={yayinHatasi.description}
+          {...(yayinHatasi.reloadable && {
+            action: (
+              <Button variant="secondary" size="sm" onClick={() => onRetry()}>
+                Yeniden yükle
+              </Button>
+            ),
+          })}
+        />
+      ) : null}
+
       {bayat ? (
         /*
           `info`, `warning` değil: bayat veri acil değil, gösterilen şey hâlâ
@@ -670,14 +786,17 @@ export function CategoryAttributePage({
         />
       ) : null}
 
-      {icerikVar ? (
+      {icerikVar && yonetebilir ? (
+        /* Yayın bir düzenleme eylemi: `category:manage` yoksa hiç render edilmez
+           (kilitli buton değil — bkz. `yonetebilir`). */
         <div className={css.toolbar}>
           <Button
             variant="primary"
             leadingIcon={<Upload size={16} />}
-            /* Uçan bir kayıt varken yayınlamak, oturmamış bir taslağı yayınlamak
-               olur. `loading` **verilmiyor**: spinner "yayın uçuyor" der ve o
-               bilgi bu ekrana gelmiyor (bkz. component JSDoc'u). */
+            /* `loading` artık besleniyor (`publishing`): yayın uçarken spinner.
+               `saving`'den ayrı — o taslak kaydını, bu yayını gösterir. Uçan bir
+               kayıt varken de kapalı: oturmamış taslak yayınlanmaz. */
+            loading={publishing}
             disabled={saving}
             onClick={yayiniSor}
           >

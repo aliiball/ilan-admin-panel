@@ -9,7 +9,7 @@ import {
   type UserAccount,
 } from '../../types/domain'
 import type { UserFilterValues } from '../../types/component-props'
-import { activeIndividualOwner, allUserFixtures } from '../../fixtures'
+import { activeIndividualOwner, allUserFixtures, moderatorUser } from '../../fixtures'
 import { UserManagementPage } from './UserManagementPage'
 
 /* ── Ortak veriler ───────────────────────────────────────────────────────── */
@@ -161,8 +161,8 @@ type Story = StoryObj<typeof meta>
 /**
  * Tablo başlığı korunur, satırlar skeleton olur — veri gelince düzen zıplamaz.
  *
- * Tek bir `DataTable`: iskeletin kart hâli yok, dolayısıyla düzen ikizlemesi de
- * yok (bkz. `.css.ts` → `tableView`).
+ * Tek bir `DataTable`: iskeletin kart hâli yok, dolayısıyla `mobileMode="cards"`
+ * verilmiyor — yükleme dalı zaten viewport'tan bağımsız tek tablo iskeleti.
  */
 export const Loading: Story = {
   args: { state: { status: 'loading' }, filters: VARSAYILAN_FILTRELER },
@@ -494,23 +494,29 @@ export const RowNameIsTheAccessibleName: Story = {
 }
 
 /**
- * Ban geri döndürülemez: buton doğrudan `onBan`'i çağırmaz, önce onay ister.
+ * Ban geri döndürülemez **ve** gerekçe ister: buton doğrudan `onBan`'i çağırmaz,
+ * önce gerekçe toplayan dialog'u açar (brifing 2.6 yaptırıma gerekçe iliştirmeyi
+ * şart koşuyor; Faz 3'te alansızdı, RAPOR EDİLMİŞTİ).
+ *
+ * İki kapı ölçülüyor: (1) gerekçe boşken onay butonu `disabled`, (2) gerekçe
+ * girilince `onBan` `SanctionInput` ile çağrılıyor. Ban süresiz olduğu için
+ * `durationDays` **yok** — yalnız `reason`.
  *
  * Play dialog'u **kapatarak** bitiyor, bu yüzden `popupKapanmasiniBekle` şart:
  * kapanış sürerken axe çalışırsa Base UI'ın odak koruma span'lerini
  * `aria-hidden-focus` ihlali sayar ve story yazı-tura düşer.
  *
  * Arka plan açık dialog'la `aria-hidden` olduğu için rol sorgusuyla aranmıyor;
- * onay butonu portalın içinde, `within(document.body)` ile bulunuyor.
+ * dialog içeriği portalda, `within(document.body)` ile bulunuyor.
  */
-export const BanRequiresConfirmation: Story = {
+export const BanRequiresReason: Story = {
   args: { state: { status: 'success', data: KULLANICI_SAYFASI }, filters: VARSAYILAN_FILTRELER },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement)
 
     await userEvent.click(canvas.getByRole('button', { name: 'Banla: Ayşe Demir' }))
 
-    /* Onaysız çağrılmadı: dialog açıldı, karar hâlâ verilmedi. */
+    /* Dialog açıldı, karar hâlâ verilmedi. */
     await expect(args.onBan).not.toHaveBeenCalled()
 
     const portal = within(document.body)
@@ -518,10 +524,60 @@ export const BanRequiresConfirmation: Story = {
 
     /*
       Satırdaki buton "Banla: Ayşe Demir", dialog'unki "Banla" — adlar birebir
-      eşleşmediği için sorgu tek bir butona düşüyor.
+      eşleşmediği için sorgu tek bir butona düşüyor. Gerekçe boşken buton kilitli:
+      gerekçesiz yaptırım denetlenemez.
     */
-    await userEvent.click(portal.getByRole('button', { name: 'Banla' }))
-    await expect(args.onBan).toHaveBeenCalledWith(activeIndividualOwner)
+    const banla = portal.getByRole('button', { name: 'Banla' })
+    await expect(banla).toBeDisabled()
+
+    await userEvent.type(portal.getByRole('textbox', { name: 'Gerekçe' }), 'Dolandırıcılık şüphesi')
+    await expect(banla).toBeEnabled()
+
+    await userEvent.click(banla)
+    await expect(args.onBan).toHaveBeenCalledWith(activeIndividualOwner, {
+      reason: 'Dolandırıcılık şüphesi',
+    })
+
+    await popupKapanmasiniBekle()
+  },
+}
+
+/**
+ * Askıya alma gerekçe **ve** süre topluyor.
+ *
+ * `SanctionInput` ban'den farklı: askıda `durationDays` zorunlu (süresiz askı
+ * kavramsal olarak bandır). Süre makul bir varsayılanla (7 gün) başlıyor, yani
+ * form gerekçe girilir girilmez geçerli — story bu yüzden sayı alanını sürmeden
+ * gerekçeyi yazıp onaylıyor ve yükün her iki alanını da ölçüyor.
+ *
+ * `ConfirmDialog` yerine `Modal`: `ConfirmDialog`'un gövde slotu yok, alan
+ * toplayan dialog `Modal` + `Textarea`/`NumberInput` olmak zorunda.
+ */
+export const SuspendCollectsReasonAndDuration: Story = {
+  args: { state: { status: 'success', data: KULLANICI_SAYFASI }, filters: VARSAYILAN_FILTRELER },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Askıya al: Ayşe Demir' }))
+    await expect(args.onSuspend).not.toHaveBeenCalled()
+
+    const portal = within(document.body)
+    await portal.findByText('Ayşe Demir hesabını askıya al')
+
+    /* Süre alanı görünür ve varsayılanıyla geçerli; yalnız gerekçe yazılıyor. */
+    await expect(portal.getByText('Askı süresi (gün)')).toBeInTheDocument()
+
+    const askiyaAl = portal.getByRole('button', { name: 'Askıya al' })
+    await expect(askiyaAl).toBeDisabled()
+
+    await userEvent.type(portal.getByRole('textbox', { name: 'Gerekçe' }), 'Tekrarlayan spam ilan')
+    await expect(askiyaAl).toBeEnabled()
+
+    await userEvent.click(askiyaAl)
+    await expect(args.onSuspend).toHaveBeenCalledWith(activeIndividualOwner, {
+      reason: 'Tekrarlayan spam ilan',
+      durationDays: 7,
+    })
 
     await popupKapanmasiniBekle()
   },
@@ -607,5 +663,85 @@ export const SupportCannotFilterByAdminRole: Story = {
     await expect(filtreler.getByText('Kullanıcı tipi')).toBeInTheDocument()
     await expect(filtreler.getByText('Hesap durumu')).toBeInTheDocument()
     await expect(filtreler.queryByText('Admin rolü')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Rol değişikliği çakışması (`roleChangeConflict`, brifing 2.6).
+ *
+ * İki superAdmin aynı hesabın rolünü aynı anda değiştirdiğinde iyimser kilit
+ * damgası uyuşmaz; sunucu kararı reddeder ve sebebi `roleChangeError` ile geri
+ * gönderir. Ekran uyarıyı **eşleşen satırın** eylem hücresinde gösterir
+ * (`ModerationActionBar.decisionError` kalıbı). Tekrar dene butonu **yok**: aynı
+ * damga aynı çakışmayı üretir; doğru eylem yeniden yükleyip bakmak.
+ *
+ * `userId` `moderatorUser`'a işaret ediyor; uyarı yalnız o satırda çıkar (tek
+ * `alert`), başka satırlara sızmaz. Gizli kart dalındaki kopya `getAllByRole`'ün
+ * dışında (hidden).
+ *
+ * Not: `expectedRoleVersion` bu ekrandan **gönderilemiyor** — `UserAccount` sürüm
+ * damgası taşımıyor (RAPOR EDİLDİ). Çakışma yine de sunucu tarafında algılanabilir
+ * ve gösterilen yarı bu; `roleChangeError` kanalı damgadan bağımsız çalışıyor.
+ */
+export const RoleChangeConflict: Story = {
+  args: {
+    state: { status: 'success', data: KULLANICI_SAYFASI },
+    filters: VARSAYILAN_FILTRELER,
+    roleChangeError: {
+      userId: moderatorUser.id,
+      error: {
+        title: 'Rol değişikliği uygulanamadı',
+        message:
+          'Bu hesabın rolü siz bakarken başka bir yönetici tarafından değiştirildi. Sayfayı yenileyip tekrar deneyin.',
+        code: 'ROLE_VERSION_CONFLICT',
+        retryable: false,
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    const uyarilar = canvas.getAllByRole('alert')
+    /* Tek satır düştü: uyarı yalnız orada. */
+    await expect(uyarilar).toHaveLength(1)
+    await expect(uyarilar[0]).toHaveTextContent('Rol değişikliği uygulanamadı')
+
+    /* Çakışmanın satırı gerçekten listede — kontrol grubu. */
+    await expect(canvas.getAllByText('Elif Kaya').length).toBeGreaterThan(0)
+  },
+}
+
+/* ── Sıralama ────────────────────────────────────────────────────────────── */
+
+/**
+ * Sıralanabilir kolonlar (Faz 3'te kanalsızdı → hiçbir kolon `sortable` değildi).
+ *
+ * `onSortChange` **bağlıysa** sıralanabilir başlıklar birer düğme olur; bağlı
+ * değilse hiç düğme çıkmaz (ölü buton üretmemek — `ColumnDef.sortable`'ın kuralı).
+ * Sıralamayı tablo **yapmaz**: niyeti `onSortChange` ile bildirir, sıralı veriyi
+ * `rows`'ta geri bekler.
+ *
+ * `sort` `createdAt`'i `asc` gösteriyor; aynı başlığa basmak yönü **çevirir**
+ * (DataTable: aynı kolon + `asc` → `desc`). Story bu geçişi ölçüyor.
+ *
+ * Başlık düğmeleri yalnız tablo dalında; test viewport'u (varsayılan ≥48rem)
+ * tabloyu gösterdiği için `hidden` gerekmiyor.
+ */
+export const Sortable: Story = {
+  args: {
+    state: { status: 'success', data: KULLANICI_SAYFASI },
+    filters: VARSAYILAN_FILTRELER,
+    sort: { columnId: 'createdAt', direction: 'asc' },
+    onSortChange: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    /* Sıralanabilir başlık bir düğme; adı başlık metni (ikon `aria-hidden`). */
+    await userEvent.click(canvas.getByRole('button', { name: 'Kayıt tarihi' }))
+    await expect(args.onSortChange).toHaveBeenCalledWith({
+      columnId: 'createdAt',
+      direction: 'desc',
+    })
   },
 }

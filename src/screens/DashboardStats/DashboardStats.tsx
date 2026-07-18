@@ -8,6 +8,8 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -20,6 +22,8 @@ import { DateRangePicker } from '../../components/primitives/DateRangePicker'
 import { ChartCard } from '../../components/composites/ChartCard'
 import { EmptyState } from '../../components/composites/EmptyState'
 import { ErrorState } from '../../components/composites/ErrorState'
+import { ListingCard } from '../../components/composites/ListingCard'
+import { ModerationHistory } from '../../components/composites/ModerationHistory'
 import { StatCard } from '../../components/composites/StatCard'
 import { LISTING_CATEGORY_LABEL } from '../../domain/labels'
 import { formatDate } from '../../utils/formatDateTime'
@@ -113,6 +117,16 @@ function araligiYaz(range: DateRange): string {
 const SERI_RENGI = 'var(--color-primary-600)'
 const IZGARA_RENGI = 'var(--color-border-subtle)'
 const EKSEN_RENGI = 'var(--color-text-muted)'
+
+/**
+ * Onay/red ayrımının iki serisi anlamına göre renklendiriliyor: onay `success`,
+ * red `danger`. Renk **anlamdan** okunuyor, `ModerationHistory`'nin `approved →
+ * success`, `rejected → danger` ton eşlemesiyle aynı — aynı iki kavram bütün
+ * ekranlarda aynı renkte görünsün. `KATEGORI_RENGI` ile aynı `var()` gerekçesi:
+ * tema değişince grafik yeniden çizilmeden rengini günceller.
+ */
+const ONAY_RENGI = 'var(--color-success-600)'
+const RED_RENGI = 'var(--color-danger-600)'
 
 /**
  * Renk **kategoriye** eşleniyor, dizideki sırasına değil — `ChartCard`ın
@@ -281,6 +295,80 @@ function KategoriGrafigi({ data }: { data: CategoryDistributionItem[] }) {
             ))}
           </Pie>
         </PieChart>
+      </ResponsiveContainer>
+    </GrafikAlani>
+  )
+}
+
+/** Onay ve red serisinin ekran okuyucudaki karşılığı — iki toplam tek cümlede. */
+function onayRedOzeti(approvals: TimeSeriesPoint[], rejections: TimeSeriesPoint[]): string {
+  const onayToplam = approvals.reduce((acc, nokta) => acc + nokta.value, 0)
+  const redToplam = rejections.reduce((acc, nokta) => acc + nokta.value, 0)
+
+  return (
+    `Onay ve red: ${approvals.length} günlük seri. ` +
+    `Toplam onay ${onayToplam.toLocaleString('tr-TR')}, toplam red ${redToplam.toLocaleString('tr-TR')}.`
+  )
+}
+
+/**
+ * Günlük onay/red ayrımı — iki ayrı çizgi.
+ *
+ * Faz 3'te `dailyModerationCount` tek ayrışmamış seriydi; brifing 2.2'nin
+ * "onay/red sayısı"ndaki ayrım çizilemiyordu. İki seri **tek** veri dizisine
+ * örülüyor (`{ date, onay, red }`), çünkü Recharts `LineChart` tek `data` okur;
+ * tarihler paralel olduğu için indeksle eşleştiriliyor. `rejections[i]?.value ??
+ * 0` `noUncheckedIndexedAccess` altında güvenli — diziler eşit uzunlukta gelir
+ * ama tip bunu bilmiyor.
+ *
+ * Seriler `Legend` ile adlandırılıyor; `Line.name` ("Onay"/"Red") hem gösterge
+ * metnini hem de `dataKey`'i insan okunur kılıyor. `dot={false}`: 30 nokta üst
+ * üste binerdi. `accessibilityLayer={false}` ve `isAnimationActive={false}`
+ * öteki grafiklerdeki gerekçelerle aynı.
+ */
+function OnayRedGrafigi({
+  approvals,
+  rejections,
+}: {
+  approvals: TimeSeriesPoint[]
+  rejections: TimeSeriesPoint[]
+}) {
+  const veri = approvals.map((nokta, index) => ({
+    date: nokta.date,
+    onay: nokta.value,
+    red: rejections[index]?.value ?? 0,
+  }))
+
+  return (
+    <GrafikAlani ozet={onayRedOzeti(approvals, rejections)}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={veri} accessibilityLayer={false}>
+          <CartesianGrid strokeDasharray="3 3" stroke={IZGARA_RENGI} />
+          <XAxis
+            dataKey="date"
+            tickFormatter={(value: string) => formatDate(value)}
+            interval={6}
+            stroke={EKSEN_RENGI}
+          />
+          <YAxis stroke={EKSEN_RENGI} />
+          <Legend />
+          <Line
+            type="monotone"
+            dataKey="onay"
+            name="Onay"
+            stroke={ONAY_RENGI}
+            dot={false}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="red"
+            name="Red"
+            stroke={RED_RENGI}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
       </ResponsiveContainer>
     </GrafikAlani>
   )
@@ -636,8 +724,10 @@ export function DashboardStats({
     const yeniIlan = data.dailyNewListings
     const moderasyon = data.dailyModerationCount
     const dagilim = data.categoryDistribution
+    const onaylar = data.dailyApprovals
+    const redler = data.dailyRejections
 
-    return [
+    const tanimlar: GrafikTanimi[] = [
       {
         alan: 'dailyNewListings',
         baslik: 'Günlük yeni ilan',
@@ -667,6 +757,176 @@ export function DashboardStats({
         cizim: <KategoriGrafigi data={dagilim ?? []} />,
       },
     ]
+
+    /*
+      Onay/red ayrımı — **yalnız iki seri de gelince** çiziliyor. Öteki üç grafik
+      alan gelmese bile listede kalır (`geldi: false`), çünkü yerinde bir hata
+      bloğu belirebilir; bu ayrım ise ek/opsiyonel bir görünüm (Faz 3 sonrası (b)
+      turu), bu yüzden kanal hiç yoksa hücresini de açmıyor — `iskeletCiz`in
+      `grafikTanimlari({})` çağrısı da bu sayede eski üç iskeleti üretiyor,
+      dördüncüyü değil.
+
+      İkisinden yalnız biri gelen bir hâl sözleşme dışı (`dailyApprovals` ile
+      `dailyRejections` toplamları `dailyModerationCount`'a eşit olmak zorunda,
+      biri olmadan grafiğin anlamı yok); o durumda da çizilmiyor.
+    */
+    if (onaylar !== undefined && redler !== undefined) {
+      tanimlar.push({
+        alan: 'dailyApprovals',
+        baslik: 'Onay ve red',
+        aciklama: `Onay ve reddin günlük ayrımı · ${aralikMetni}`,
+        geldi: true,
+        bos: onaylar.length === 0,
+        genis: true,
+        cizim: <OnayRedGrafigi approvals={onaylar} rejections={redler} />,
+      })
+    }
+
+    return tanimlar
+  }
+
+  /*
+    Faz 3 sonrası (b) turunda eklenen üç bölüm — brifing 2.2'nin Faz 3'te
+    KANALSIZ kalan verileri, artık `DashboardMetrics`'in opsiyonel alanlarından
+    okunuyor. Üçü de **verilirse** render ediliyor, verilmezse hiç çizilmiyor
+    (Faz 3 davranışı korunur). Alan geldi ama boşsa da çizilmiyor: dashboard'ın
+    özet bölümünde boş bir "en uzun bekleyen" listesi göstermek gürültü olurdu —
+    bu bölümlerin `ChartCard`/`StatCard` gibi kendi boş/hata durumları yok,
+    çünkü grafik değil ek özetler.
+
+    **Başlıklar `<h3>`:** ekranın en üst başlığı `<h2>` ("Özet metrikler",
+    "Grafikler") ve bu bölümler onların altında bir kademe — belge taslağı
+    h2 → h3 sırasını koruyor, `heading-order` temiz. Bölümler yine **adsız**
+    `<section>` (KPI/grafik bölümleriyle aynı gerekçe): ad verilseydi her biri
+    bir `region` landmark'ı olur ve sayfaya karşılığı olmayan gürültü eklerdi;
+    yapı `<h3>`lerden okunuyor.
+  */
+
+  const enUzunBekleyenBolumu = (data: Partial<DashboardMetrics>) => {
+    const ilanlar = data.longestWaitingListings
+
+    if (ilanlar === undefined || ilanlar.length === 0) return null
+
+    return (
+      <section className={css.section}>
+        <h3 className={css.subsectionTitle}>En uzun bekleyen ilanlar</h3>
+        <p className={css.subsectionDescription}>
+          Moderasyon kuyruğunda en uzun süredir inceleme bekleyen ilanlar; en eski gönderim başta.
+        </p>
+
+        {/*
+          `compact` + `showModerationMeta`: kuyrukta hızlı tarama için tek
+          satırlık kart, gönderim zamanı/atanan moderatör/revizyonla birlikte —
+          "ne kadar bekledi" sorusunun cevabı orada. Kart **tıklanabilir değil**:
+          `DashboardStatsProps`'ta ilana özel bir tıklama kanalı yok
+          (`onMetricClick` yalnız KPI metriği taşır) ve tıklanamayan şeyi
+          tıklanabilir göstermemek reponun kuralı — RAPOR EDİLDİ.
+
+          Semantik liste (`<ul>`): kartlar bir dizi, ekran okuyucu "liste, N öğe"
+          demeli. Reset üçlüsü (`listStyle`/`margin`/`padding`) `listingList`'te
+          sıfırlı, yoksa liste 40 piksel sağa kayardı.
+        */}
+        <ul className={css.listingList}>
+          {ilanlar.map((ilan) => (
+            <li key={ilan.id} className={css.listingItem}>
+              <ListingCard listing={ilan} variant="compact" showModerationMeta />
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  const sonModerasyonBolumu = (data: Partial<DashboardMetrics>) => {
+    const olaylar = data.recentModerationEvents
+
+    if (olaylar === undefined || olaylar.length === 0) return null
+
+    return (
+      <section className={css.section}>
+        <h3 className={css.subsectionTitle}>Son moderasyon işlemleri</h3>
+
+        {/*
+          `table` varyantı: tarama ve karşılaştırma için sütunlu okuma (tarih,
+          olay + durum geçişi, aktör, ayrıntı). `compact` yerine `table`, çünkü
+          `DataTable` kendi yatay kaydırma kabını taşıyor (`mobileMode="scroll"`)
+          ve o kap 320 pikselde sayfayı taşırmadan içeride kaydırılıyor; `compact`
+          varyantın sarmayan tek-satır ızgarası dar ekranda kabı genişletebilirdi.
+
+          `ModerationHistory` olayları **kendisi** eskiden yeniye sıralıyor;
+          fixture "en yeni başta" veriyor ama sıralama component'in işi, ekran
+          onu bozmuyor.
+        */}
+        <ModerationHistory events={olaylar} variant="table" />
+      </section>
+    )
+  }
+
+  const moderatorHacmiBolumu = (data: Partial<DashboardMetrics>) => {
+    const hacim = data.moderatorVolume
+
+    if (hacim === undefined || hacim.length === 0) return null
+
+    return (
+      <section className={css.section}>
+        <h3 className={css.subsectionTitle}>Moderatör bazında işlem hacmi</h3>
+
+        {/*
+          **Yetki okuması sayfa katmanının.** Brifing 2.2 bu bloğu "yalnızca
+          yetkili rollere" diyor ama `DashboardStatsProps`'ta ne bir izin listesi
+          (`availablePermissions`) ne de böyle bir `AdminPermission` var — ekran
+          kimin görebileceğini **bilemiyor**. Kural gereği ("yetki kontrolü
+          component'in işi değil"), karar veriye taşınıyor: veri **verildiğinde**
+          gösterilir, verip vermemeye çağıran (Faz 4 sayfa katmanı) karar verir.
+          Uydurma bir izin kapısı kurmak yerine boşluk görünür bırakıldı — RAPOR
+          EDİLDİ.
+
+          Bir `<table>`: dört sayaç yan yana en net tablo olarak okunuyor.
+          Kaydırma kabı `tabIndex={0}` (axe `scrollable-region-focusable`:
+          salt okunur bir tablo da klavyeyle gezilebilmeli); `role="region"`
+          **verilmiyor** — sayfa başına birden çok tablo olabilir ve gereksiz bir
+          landmark `landmark-unique`'i gürültüyle doldururdu (AGENTS).
+        */}
+        <div className={css.tableScroller} tabIndex={0}>
+          <table className={css.volumeTable}>
+            <thead>
+              <tr>
+                <th scope="col" className={css.volumeColHead}>
+                  Moderatör
+                </th>
+                <th scope="col" className={css.volumeNumHead}>
+                  Onay
+                </th>
+                <th scope="col" className={css.volumeNumHead}>
+                  Red
+                </th>
+                <th scope="col" className={css.volumeNumHead}>
+                  Düzeltme
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {hacim.map((moderator) => (
+                <tr key={moderator.adminId}>
+                  <th scope="row" className={css.volumeRowHead}>
+                    {moderator.adminName}
+                  </th>
+                  <td className={css.volumeNumCell}>
+                    {moderator.approvedCount.toLocaleString('tr-TR')}
+                  </td>
+                  <td className={css.volumeNumCell}>
+                    {moderator.rejectedCount.toLocaleString('tr-TR')}
+                  </td>
+                  <td className={css.volumeNumCell}>
+                    {moderator.changesRequestedCount.toLocaleString('tr-TR')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )
   }
 
   /*
@@ -694,6 +954,15 @@ export function DashboardStats({
           {grafikTanimlari(data).map((t) => grafikKarti(t, errors))}
         </div>
       </section>
+
+      {/*
+        Faz 3 sonrası (b) turunun üç ek bölümü. Her biri kendi alanı gelmezse
+        `null` döndürür; `success` (dolu fixture) hepsini, `partialSuccess`
+        yalnız gelenleri, boş seri hiçbirini çizmez.
+      */}
+      {enUzunBekleyenBolumu(data)}
+      {sonModerasyonBolumu(data)}
+      {moderatorHacmiBolumu(data)}
     </>
   )
 

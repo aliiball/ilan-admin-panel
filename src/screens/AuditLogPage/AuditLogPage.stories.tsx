@@ -1,15 +1,17 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test'
-import { AUDIT_ENTITY_TYPE_LABEL } from '../../domain/labels'
+import { ADMIN_PERMISSION_LABEL, AUDIT_ENTITY_TYPE_LABEL } from '../../domain/labels'
 import {
+  adminUserFixtures,
   allAuditLogFixtures,
   auditByEntityType,
+  auditListingRejectedCorlu,
   auditReportResolvedPhoto,
   auditThemeDefaultChanged,
   emptyAuditLogFixtures,
 } from '../../fixtures'
 import { AdminRole, type AuditLogEntry, type Paginated } from '../../types/domain'
-import type { AuditLogFilters } from '../../types/component-props'
+import type { AuditLogFilters, SelectOption } from '../../types/component-props'
 import { AuditLogPage } from './AuditLogPage'
 
 /**
@@ -64,6 +66,18 @@ const DOLU_FILTRELER: AuditLogFilters = {
   entityTypes: ['user'],
   dateRange: { from: '2026-07-01', to: '2026-07-16' },
 }
+
+/**
+ * Aktör filtresi seçenekleri: dört adminin `id → ad`'i.
+ *
+ * Ekran kimlikleri adlara çeviremez (veri çekmez); bu eşleme sayfa katmanının
+ * işi ve `adminUserFixtures`'tan kuruluyor. `actorOptions` verilmedikçe aktör
+ * filtresi hiç render edilmez.
+ */
+const AKTOR_SECENEKLERI: SelectOption[] = adminUserFixtures.map((admin) => ({
+  value: admin.id,
+  label: admin.fullName,
+}))
 
 /**
  * Base UI popup'ının kapanışını bekler.
@@ -635,5 +649,124 @@ export const DesktopTable: Story = {
 
     await expect(canvas.getAllByRole('columnheader')).toHaveLength(8)
     await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth)
+  },
+}
+
+/**
+ * Aktör ve eylem filtresi (brifing 2.10, Faz 3 sonrası (b) turunda bağlandı).
+ *
+ * Ekran süzmez: önden süzülmüş veriyi (`admin-moderator-1` × `listing:reject`
+ * tek kayıt döndürür) `state` ile alır, seçili değerleri filtre çubuğunda
+ * gösterir. Ölçülen dört şey:
+ *
+ * 1. **Kapsama:** kütükte geçen her `action` kodu bir eylem seçeneği
+ *    (`ADMIN_PERMISSION_LABEL`), her `actorId` bir kullanıcı seçeneği
+ *    (`adminUserFixtures`) — seçilebilen ama karşılığı olmayan bir filtre
+ *    kullanıcıyı yanıltırdı.
+ * 2. **Aktör çözümleme:** `admin-moderator-1` → "Elif Kaya" çipi
+ *    (`actorOptions` id → ad).
+ * 3. **Eylem çözümleme:** `listing:reject` → "İlan reddetme" çipi
+ *    (`AdminPermission` kodu → etiket).
+ * 4. **Kontrol:** seçilmeyen admin (Deniz Arslan) çip olmaz — çipler seçimi
+ *    gösterir, tüm seçenekleri değil.
+ */
+export const ActorAndActionFilters: Story = {
+  args: {
+    actorOptions: AKTOR_SECENEKLERI,
+    filters: {
+      roles: [],
+      actorIds: ['admin-moderator-1'],
+      actions: ['listing:reject'],
+      entityTypes: [],
+      dateRange: {},
+    },
+    state: {
+      status: 'success',
+      data: {
+        items: [auditListingRejectedCorlu],
+        page: 1,
+        pageSize: 20,
+        totalItems: 1,
+        totalPages: 1,
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    // 1. Kütükte geçen her kod/aktör bir filtre seçeneğidir.
+    const kodlar = Array.from(new Set(allAuditLogFixtures.map((entry) => entry.action)))
+    for (const kod of kodlar) {
+      await expect(kod in ADMIN_PERMISSION_LABEL).toBe(true)
+    }
+    const adminIdleri = new Set(adminUserFixtures.map((admin) => admin.id))
+    const aktorler = Array.from(new Set(allAuditLogFixtures.map((entry) => entry.actorId)))
+    for (const aktor of aktorler) {
+      await expect(adminIdleri.has(aktor)).toBe(true)
+    }
+
+    // 2–3. Seçili değerler options ile ada/etikete çözülüyor (çip kaldırma butonu).
+    await expect(
+      canvas.getByRole('button', { name: 'Elif Kaya seçimini kaldır' }),
+    ).toBeInTheDocument()
+    await expect(
+      canvas.getByRole('button', { name: 'İlan reddetme seçimini kaldır' }),
+    ).toBeInTheDocument()
+
+    // 4. Seçilmeyen admin çip olmuyor.
+    await expect(canvas.queryByRole('button', { name: 'Deniz Arslan seçimini kaldır' })).toBeNull()
+
+    // İki filtre aktif; başlık + tek kayıt.
+    await expect(canvas.getByText('2 aktif')).toBeInTheDocument()
+    await expect(canvas.getAllByRole('row')).toHaveLength(2)
+  },
+}
+
+/**
+ * "Yetkiye göre dışa aktarma" (brifing 2.10, (b) turunda bağlandı).
+ *
+ * `onExport` verildiğinde başlık satırında "Dışa aktar" butonu çıkar ve mevcut
+ * filtreyle eşleşen kayıtları çağıran dışa aktarır. Yetki kapısı sunucuda:
+ * `onExport` verilmedikçe buton hiç render edilmez (kontrol: `EntityLinkInDrawer`
+ * onu vermez ve butonu bulamaz).
+ */
+export const ExportButton: Story = {
+  args: { state: { status: 'success', data: TEK_SAYFA }, onExport: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Dışa aktar' }))
+    await expect(args.onExport).toHaveBeenCalledTimes(1)
+  },
+}
+
+/**
+ * Detay çekmecesinde "İlgili varlığa git" bağlantısı (brifing 2.10, (b) turunda
+ * bağlandı).
+ *
+ * `onEntityOpen` **`onEntryOpen`'den ayrı kanal**: `onEntryOpen` çekmeceyi açar
+ * (kayıtta kalır), `onEntityOpen` `entityType`+`entityId` ile ekrandan ayrılır.
+ * Butonu yalnız `onEntityOpen` verilince çıkar; `EntryDetailDrawer` onu vermez ve
+ * çekmecede bu butonu **bulamaz** (o testin kontrol tarafı).
+ *
+ * Çekmece **açık bırakılıyor**: buton çekmeceyi kapatmıyor (rota değişimi sayfanın
+ * işi), açık dialog'la biten story `aria-hidden-focus` yarışı üretmiyor.
+ */
+export const EntityLinkInDrawer: Story = {
+  args: { state: { status: 'success', data: TEK_SAYFA }, onEntityOpen: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    // Kontrol: `onExport` verilmedi → dışa aktar butonu yok.
+    await expect(canvas.queryByRole('button', { name: 'Dışa aktar' })).toBeNull()
+
+    await userEvent.click(canvas.getAllByRole('button', { name: /^Detay: / })[0]!)
+
+    const cekmece = await within(document.body).findByRole('dialog')
+    await userEvent.click(within(cekmece).getByRole('button', { name: 'İlgili varlığa git' }))
+
+    // İlk satır `auditReportResolvedPhoto`; kanal onu geçiriyor, çekmece açık kalıyor.
+    await expect(args.onEntityOpen).toHaveBeenCalledTimes(1)
+    await expect(args.onEntityOpen).toHaveBeenCalledWith(auditReportResolvedPhoto)
   },
 }

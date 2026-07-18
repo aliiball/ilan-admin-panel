@@ -9,7 +9,8 @@ import {
   type Paginated,
 } from '../../types/domain'
 import { allListingFixtures, residentialPublishedApartment } from '../../fixtures/listings'
-import type { ListingFilterValues } from '../../types/component-props'
+import { adminUserFixtures, moderatorUser } from '../../fixtures/users'
+import type { ListingFilterOptions, ListingFilterValues } from '../../types/component-props'
 import { ListingListPage } from './ListingListPage'
 
 /**
@@ -64,6 +65,29 @@ const DOLU_FILTRELER: ListingFilterValues = {
 
 const SECILI: string[] = allListingFixtures.slice(0, 3).map((ilan) => ilan.id)
 
+/**
+ * Filtre **seçenek kaynakları** — sayfa katmanının doldurduğu kanal.
+ *
+ * İl/ilçe için makul, sabit ve deterministik bir liste (`value` plaka/UUID
+ * yerine kısa kod; gerçek değeri sunucu belirler). İnceleyen moderatör listesi
+ * `adminUserFixtures`'tan türetiliyor: her admin `{ value: id, label: ad }` —
+ * filtre **adı** gösterir, **id** gönderir. Ekran bu adları çözemez (veri
+ * çekmez); seçenekleri kuran sayfa katmanıdır.
+ */
+const FILTRE_SECENEKLERI: ListingFilterOptions = {
+  cities: [
+    { value: '34', label: 'İstanbul' },
+    { value: '06', label: 'Ankara' },
+    { value: '35', label: 'İzmir' },
+  ],
+  districts: [
+    { value: 'kadikoy', label: 'Kadıköy' },
+    { value: 'besiktas', label: 'Beşiktaş' },
+    { value: 'cankaya', label: 'Çankaya' },
+  ],
+  reviewers: adminUserFixtures.map((admin) => ({ value: admin.id, label: admin.fullName })),
+}
+
 const meta = {
   title: 'Screens/ListingListPage',
   component: ListingListPage,
@@ -77,9 +101,9 @@ const meta = {
         component:
           'İlan listesi: filtre, tablo, seçim ve toplu işlemler. Veri **çekmez** — `state` ' +
           "prop'tan gelir. Kabuk render etmez, bu yüzden `<h1>`'i yoktur. Kart/tablo kararını " +
-          'ekran veriyor ve iki dalı da render edip birini medya sorgusuyla kapatıyor: ' +
-          "`DataTableProps.mobileMode`'un JSDoc'u \"dar ekranda\" dese de component viewport'a " +
-          'bakmıyor, `mobileMode="cards"` 1440 pikselde de kart çiziyor. Toplu eylemler iki ' +
+          '`DataTable` veriyor: `mobileMode="cards"` viewport\'a kendisi bakıyor (48rem\'in ' +
+          "altında kart, üstünde tablo) ve iki dalı da DOM'da tutup birini medya sorgusuyla " +
+          'boyuyor — ekran tek `DataTable` veriyor. Toplu eylemler iki ' +
           'kapıdan geçer (`ListingBulkModerate` + eylemin kendi izni); yetkisi olmayan kullanıcı ' +
           'butonu devre dışı değil, **hiç** görmez ve toplu eylem kalmayınca seçim kutuları da ' +
           'çıkmaz. `filteredEmpty` `AsyncState` üyesi değil — `status: empty` + filtrelerin ' +
@@ -652,5 +676,96 @@ export const DesktopTable: Story = {
 
     await userEvent.click(canvas.getByRole('button', { name: 'Sonraki sayfa' }))
     await expect(args.onPageChange).toHaveBeenCalledWith(3)
+  },
+}
+
+/* ── Faz 3 sonrası (b) turunda bağlanan kanallar ─────────────────────────── */
+
+/**
+ * Sıralama kanalı bağlı: uygun başlıklar sıralama düğmesi olur (Faz 3'te hiçbir
+ * kolon `sortable` değildi çünkü `onSortChange` yoktu).
+ *
+ * Sıralamayı **tablo yapmaz**: aktif sıralamayı `sort` **görünüm** olarak
+ * gösterir (Fiyat başlığı azalan işaretli), başka bir başlığa basmak
+ * `onSortChange`'i yeni niyetle çağırır ve ekran sıralı veriyi `rows`'ta geri
+ * bekler. Masaüstü viewport'u bilerek: sıralanabilir başlıklar **tablo dalında**
+ * ve o dal ancak 48rem'in üstünde boyanıyor.
+ */
+export const Sortable: Story = {
+  globals: { viewport: { value: 'desktop1440' } },
+  args: {
+    state: { status: 'success', data: BASARILI_VERI },
+    filters: BOS_FILTRELER,
+    selectedIds: [],
+    availablePermissions: izinler(AdminRole.Moderator),
+    sort: { columnId: 'price', direction: 'desc' },
+    onSortChange: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    // Aktif sıralama görünümü: Fiyat başlığı azalan işaretli.
+    await expect(canvas.getByRole('columnheader', { name: 'Fiyat' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    )
+
+    // Sıralanabilir başlık artık buton; basınca niyet dışarı bildiriliyor.
+    await userEvent.click(canvas.getByRole('button', { name: 'Başlık' }))
+    await expect(args.onSortChange).toHaveBeenCalledWith({ columnId: 'title', direction: 'asc' })
+
+    /*
+      Dekoratif ve bileşik sütunlar sıralanabilir değil: "Fotoğraflar" başlığı
+      buton olmadı. Olumsuz iddia, `sortable` kümesinin gerçekten süzdüğünü
+      ölçüyor — hepsini işaretleseydik bu düşerdi.
+    */
+    await expect(canvas.queryByRole('button', { name: 'Fotoğraflar' })).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * `filterOptions` verildi: il/ilçe/mahalle ve inceleyen filtreleri artık seçenek
+ * üretiyor (Faz 3'te seçenek kaynağı yoktu → bu filtreler hiç render edilmiyordu).
+ *
+ * Play, inceleyen Select'ini **açıp bir moderatör seçiyor** ve seçimin sözleşme
+ * şeklinde (`reviewerId`) yukarı bildirildiğini ölçüyor. Portal açıldığı için
+ * kapanış beklenmeli: `a11y.test: 'error'` iken kapanma animasyonu sürerken play
+ * biterse Base UI'ın odak-koruma span'leri DOM'da kalır ve axe `aria-hidden-focus`
+ * görür — story yazı-tura düşerdi (`popupKapanmasiniBekle`).
+ */
+export const WithFilterOptions: Story = {
+  args: {
+    state: { status: 'success', data: BASARILI_VERI },
+    filters: BOS_FILTRELER,
+    selectedIds: [],
+    availablePermissions: izinler(AdminRole.Moderator),
+    filterOptions: FILTRE_SECENEKLERI,
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement)
+
+    // İl filtresi seçenek kaynağıyla geldi (etiketiyle ölçülüyor: `getByText`
+    // tam eşleşir, 'İlçe'/'Mahalle' ile karışmaz).
+    await expect(canvas.getByText('İl')).toBeInTheDocument()
+
+    /*
+      İnceleyen Select'i açılıp bir moderatör seçiliyor. Ad regex'le aranıyor:
+      Base UI Select tetikleyicisinin erişilebilir adı etiket + değeri
+      birleştirebilir ('İnceleyen Tümü'), tam eşleşme kırılgan olurdu.
+      'İnceleyen' başka bir combobox adında geçmiyor (İ büyük harfle yazıldı,
+      `i` bayrağı yok — Türkçe eşleşme tuzağı).
+    */
+    await userEvent.click(canvas.getByRole('combobox', { name: /İnceleyen/ }))
+
+    const popup = within(document.body)
+    await userEvent.click(await popup.findByRole('option', { name: moderatorUser.fullName }))
+
+    // Seçim sözleşme şeklinde yukarı bildiriliyor: id gönderilir, ad değil.
+    await expect(args.onFiltersChange).toHaveBeenCalledWith({
+      ...BOS_FILTRELER,
+      reviewerId: moderatorUser.id,
+    })
+
+    await popupKapanmasiniBekle()
   },
 }

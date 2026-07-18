@@ -164,6 +164,97 @@ export const reportItem = style({
 })
 
 /**
+ * Kuyruk gezinme çubuğu (önceki / sonraki ilan).
+ *
+ * `<nav>` gerçek bir landmark ve bu doğru: prev/next kuyruk öğeleri arasında
+ * geziniyor. Sayfada başka `<nav>` yok (kabuk Faz 4), tek landmark benzersiz —
+ * `landmark-unique` gürültüsü yok. `justify-content: space-between` iki ucu
+ * ayırıyor; yalnız biri verilirse boş bir `<span>` diğer ucu tutuyor ki tek
+ * buton kendi tarafında kalsın (sadece `next` sağda, sadece `previous` solda).
+ */
+export const queueNav = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  justifyContent: 'space-between',
+  gap: vars.space[2],
+})
+
+/**
+ * Admin notları listesi (`<ol>`).
+ *
+ * En yeni başta (sözleşme sırası). `<ol>`: notlar zamansal bir sicil, semantik
+ * liste doğru element — ekran okuyucu "3 not" diyebilmeli. Reset üçlüsü
+ * (`listStyle`/`margin`/`padding`) `reportList` ile aynı gerekçe.
+ */
+export const noteList = style({
+  display: 'grid',
+  gap: vars.space[3],
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+})
+
+export const noteItem = style({
+  display: 'grid',
+  gap: vars.space[1],
+  minWidth: 0,
+  padding: vars.space[3],
+  border: `1px solid ${vars.color.border.subtle}`,
+  borderRadius: vars.radius.lg,
+  background: vars.color.bg.subtle,
+})
+
+/** Yazar + zaman: dar ekranda alt alta sarar. */
+export const noteHead = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'baseline',
+  gap: `${vars.space[1]} ${vars.space[2]}`,
+  minWidth: 0,
+})
+
+export const noteAuthor = style({
+  color: vars.color.text.primary,
+  fontSize: vars.font.size.sm,
+  fontWeight: vars.font.weight.semibold,
+  overflowWrap: 'anywhere',
+})
+
+export const noteTime = style({
+  color: vars.color.text.secondary,
+  fontSize: vars.font.size.sm,
+  lineHeight: vars.lineHeight.tight,
+})
+
+/** `<p>`: global reset yalnız `body`'yi sıfırlıyor, kendi margin'i grid gap'in üstüne binerdi. */
+export const noteText = style({
+  margin: 0,
+  color: vars.color.text.primary,
+  fontSize: vars.font.size.sm,
+  lineHeight: vars.lineHeight.body,
+  overflowWrap: 'anywhere',
+})
+
+/**
+ * Benzer / mükerrer ilan önerileri listesi (`<ul>`).
+ *
+ * `reportList` ile aynı reset üçlüsü; her öğe bir `ListingCard`. "Yeni sekmede
+ * aç" eylemi kartın `actions` slotunda — `onOpenSimilar` verilmezse öneriler
+ * salt okunur görünür.
+ */
+export const similarList = style({
+  display: 'grid',
+  gap: vars.space[3],
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+})
+
+export const similarItem = style({
+  minWidth: 0,
+})
+
+/**
  * Çakışmadan sonra ilanı yeniden yükleme eylemi.
  *
  * Karar çubuğunun **üstünde**: çubuk kendi `danger` uyarısını kendi render
