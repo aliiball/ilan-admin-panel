@@ -724,17 +724,18 @@ ihlalin hepsi temiz — dökümü "a11y kapısı" bölümünde.
 `UserManagementPage`, `UserDetailPage`, `CategoryAttributePage`,
 `ReportManagementPage`, `SettingsPage`, `AuditLogPage`, `AuthScreen`).
 
-**Ölçümler (Faz 3 kapanışı):**
+**Ölçümler (Faz 3 + öbek B + (b) turu kapanışı):**
 
 - `format:check` + `lint` + `typecheck` + `test-storybook --run` + `build-storybook`
-  **hepsi geçiyor**: 66 dosya, **1.191 test**, a11y kapısı `'error'` açıkken.
-- **Manifest: 66 component, 495 prop, 0 açıklamasız**, react-docgen'in atladığı
-  component **yok**. (Faz 2: 55 / 391 / 0.) Ekran tipleri belgelendi — **borç
-  ikinci kez doğmadı.**
-- **Story sayısı 912 → 1.257** (260'ı `Screens/`). Chromatic kotası açısından:
-  1.257 × 3 tema × 2 viewport = **7.542 snapshot/build**, kota 5.000/ay. Matris
-  daraltılmadan Chromatic **kurulamaz**.
-- **320 pikselde yatay taşma: 11 ekranın hiçbirinde yok** (ölçüldü, aşağıya bak).
+  **hepsi geçiyor**: 66 dosya, **1.246 test** (Faz 3: 1.191; öbek B: 1.203;
+  (b) turu: 1.246), a11y kapısı `'error'` açıkken.
+- **Manifest: 66 component, 532 prop, 0 açıklamasız**, react-docgen'in atladığı
+  component **yok**. (Faz 2: 55/391/0; Faz 3: 66/495/0; öbek B: 66/500/0.)
+  **Borç üçüncü kez de doğmadı** — (b) turunun 32 yeni prop'u belgeli.
+- **Story sayısı 912 → ~1.360** (Faz 3: 1.257; (b) turu ~100 story daha).
+  Chromatic kotası açısından matris daraltılmadan **kurulamaz**.
+- **320 pikselde yatay taşma: hiçbir ekranda yok** (ölçüldü, öbek B'de düzeltilen
+  `overflow: hidden` + mutlak konumlu gizli etiket kusuru dahil).
 
 **Ekranlar kabuk DEĞİL.** `AppShell`/`TopBar`/`SidebarNav`/`PageHeader` render
 etmiyorlar; Faz 4 onları kompoze edecek. Sonucu: ekranların `<h1>`'i yok, en üst
@@ -742,9 +743,51 @@ başlıkları `<h2>` (`AuthScreen` hariç — o kabuğun dışında yaşayan tam
 kendi `<h1>`'ini basıyor). `ListingFacts`'in `<h3>` varsayımı bu zincirle
 **doğrulandı**: h1 (PageHeader/Faz 4) → h2 (ekranın bölümü) → h3.
 
+**Faz 3 sonrası (b) turu bitti — A+C+D+E backlog'u kapatıldı.** Kullanıcı "Faz
+4'e hiçbir iş kalmasın" dedi ve şunlar yapıldı (hepsi additive, geriye dönük
+uyumlu; sözleşme genişletmeleri "backend gelince kesinleşir" diye işaretli çünkü
+`domain.ts` = FastAPI şartnamesi):
+
+- **A — 3 zorunlu story yazıldı** (Faz 3'te kanalsızdı): `ApprovalQueue.Conflict`
+  (+ hızlı karar akışı), `CategoryAttributePage.Conflict`, `SettingsPage.Loading`.
+- **C — kanal boşlukları bağlandı** (11 ekran ajanla): `ApprovalQueue`'ya karar
+  handler'ları + `decisionError`; `CategoryAttributePage`'e `publishError`/
+  `publishing`/`editorValidationErrors`/`affectedListingCount`/`availablePermissions`;
+  `SettingsPage`'e `loading`/`unauthorized`; `ReportManagementPage`'e
+  `availablePermissions`/`now`/`usersById`/`listingsById` + `domain/reportActions.ts`;
+  `UserDetailData`/`ListingReviewData`'ya yaptırım + revizyon geçmişi + admin notu
+  - benzer ilan; `UserManagementPage`/`UserDetailPage`'e `SanctionInput`/rol
+    çakışması/sıralama; `ListingListPage`'e sıralama + filtre seçenek kaynakları;
+    `AuditLogPage`'e aktör/eylem filtresi + dışa aktarma + varlığa-git;
+    `DashboardMetrics`'e üç eksik veri + onay/red ayrımı; `AuthScreenProps.errorCode`.
+- **D — fixture/altyapı**: `fixtures/categories.ts`, `revokedSuspensionMertYildiz`
+  - `mertYildizSanctions` (kaldırılmış yaptırım artık gerçek veriyle), dashboard
+    fixture'ının beş yeni bloğu.
+- **E — görsel geçiş**: 320px taşma temiz, dashboard'ın üç yeni bölümü + split
+  grafik ekran görüntüsüyle doğrulandı.
+
+**(b) turunun açık bıraktıkları (backend/sözleşme, uydurulmadı):**
+
+- **`expectedRoleVersion` beslenemiyor** — `UserAccount`/`UserDetailData` bir
+  sürüm damgası taşımıyor (`Listing.revision`'ın kullanıcı karşılığı yok). Rol
+  çakışması `roleChangeError` ile ifade edilebiliyor ama iyimser kilit damgası
+  yok; backend kullanıcıya `revision` eklerse kapanır.
+- **`onPhotoModerate` yalnız `boolean`** — fotoğraf reddinin `RejectionReason`'ı
+  panel sınırında düşüyor.
+- **`SellerPanel.risk` iletişim bilgisini göstermiyor** — sicil gelince
+  `detailed`'ın e-postası/telefonu kayboluyor (hem sicil hem iletişim gösteren
+  varyant yok).
+- **`ModerationActionBar` üç karar handler'ını da zorunlu tutuyor** ama
+  `ApprovalQueueProps` opsiyonel — çubuk yalnız üçü birden bağlıyken çıkabiliyor.
+- **`revisionHistory` karşılaştırması yalnız `[1]`** (`ListingFacts` iki `Listing`
+  alıyor, N değil) — iki eski revizyonu karşılaştıracak seçici yok.
+- **Backend-şekilli işaretliler**: `revisionHistory`/`adminNotes`/`similarListings`,
+  `DashboardMetrics`'in yeni blokları, il/ilçe/mahalle filtre hiyerarşisi.
+
 **Sırada: Faz 4** — router, `App` kabuğu, container katmanı, `SidebarNav`'ın
 yetki süzgecinin gerçek yerine taşınması. Ekranlar veriyi prop olarak alıyor;
-onları besleyecek katman yok.
+onları besleyecek katman yok. **Yukarıdaki açık damga/kanal kararları backend
+sözleşmesiyle birlikte netleşecek.**
 
 **Faz 3 bitti.** Yukarıdaki listede açık bırakılan boşlukların **hepsi karara
 bağlandı** ve aşağıda "KAPANDI" diye işaretli — `StatCardProps.sparkline`
@@ -1147,55 +1190,62 @@ gösteren şey ikinci tüketicidir.**
   dolduruyor, yükleme dalı boş bırakıyordu; a11y kapısı `'error'` olduğu için
   seçilebilir bir tabloyu yüklerken gösteren her story düşüyordu.
 
+### Faz 3 sonrası "öbek B" turunda düzeltilenler (paralel ajanlar, hepsi ölçüldü)
+
+Faz 3 kapanışında "ölçüldü, düzeltilmedi" diye bırakılan altı kusur, ayrı bir
+turda kapatıldı. Paylaşılan tip dosyasına (`component-props.ts`) prop'ları ana
+ajan ekledi, component'leri altı ajan paralel bağladı, entegrasyonu ana ajan
+koştu. Test 1.191 → **1.203**, manifest 66/495/0 → **66/500/0**, beş kapı da
+yeşil, 320px taşma yok.
+
+- **`InputProps.invalid` eklendi** — "mesajsız geçersiz": `data-invalid` +
+  `aria-invalid` var, alan altında metin yok. `error` doluysa o kazanır (kırmızı
+  - mesaj); `invalid` yalnız `error` boşken devreye girer. Giriş hatasında
+    `AuthScreen`'in alanları artık kırmızı. `SearchInput` `InputProps`'u extend
+    ettiği için miras alıyor.
+- **`RadioGroup`'un seçenek-adı kusuru `Field.Item` ile kapandı** — her seçenek
+  kendi labelable kapsamında (`Field.Item` `controlId: undefined` ile taze
+  `LabelableProvider` açıyor), grubun `labelId`'si artık sızmıyor; grup adı
+  `radiogroup`'ta kalıyor, `description` `aria-describedby`'ye bağlanıp addan
+  ayrılıyor. `FieldShell` doğruydu, kusur tüketici tarafındaydı. `RadioGroup`'a
+  ilk play testi eklendi (`AccessibleNamePerOption`).
+- **`DataTable.mobileMode` viewport-duyarlı** — `mobileMode="cards"` artık
+  **kendisi** 48rem eşiğine bakıyor (iki dal DOM'da, birini medya sorgusu boyar).
+  Üç ekranın (`ListingListPage`/`UserManagementPage`/`ReportManagementPage`) çift-
+  render telafisi kaldırıldı; hepsi düz `mobileMode="cards"` diyor. `mobileMode=
+"scroll"` ve `cards` vermeyen tüketiciler etkilenmedi (geriye dönük uyum).
+- **`ListingCard`'ın üç kusuru** — (1) kırpılmış odak halkası: `clickRegion`
+  butonuna `outlineOffset: -0.1875rem` (halka içeride, `overflow: hidden` yutamaz;
+  ölçüldü: `outline-offset: -3px`). (2) `nested-interactive`: `actions` slot'u
+  butonun **kardeşi** yapıldı (ölçüldü: `clickRegion` içinde etkileşimli element
+  yok); `StatusBadge` butonun içinde kaldı (adı korur). (3) 320px kırpılma: `body`
+  izi `auto minmax(0, 1fr)` + `overflow-wrap: anywhere` + dar ekranda `media`
+  7rem'e küçülüyor.
+- **`UserSummaryCard` phrasing content'e geçti** — `<button>` içindeki
+  `<dl>/<dt>/<dd>/<p>` hepsi `<span>` + grid oldu (ReportCard emsali); element
+  değişince düşen tarayıcı margin'leri temizlendi. Faz 3'ün iki yetki düzeltmesi
+  ve `AdminRoleIsHiddenInLimitedView` korundu.
+- **`EmptyState`/`ErrorState`'e `headingLevel` eklendi** — verilmezse başlık `<p>`
+  (geriye dönük uyum, `TitleIsNotAHeadingByDefault` kanıtlıyor), verilirse `<h{n}>`;
+  aynı `css.title` sınıfının `margin: 0`'ı UA `<h*>` margin'ini de eziyor, görünüm
+  birebir aynı. `ErrorState`'e ayrıca `secondaryAction` (brifing 2.1'in güvenli
+  geri dönüş bağlantısı; `onRetry` olmadan da görünebiliyor).
+
 ### Hâlâ açık — ölçüldü, düzeltilmedi (dosya sahipliği / kapsam)
 
-- **`ListingCard`: odak halkası kırpılıyor.** Faz 2 bunu "muhtemel bir hata,
-  ekran görüntüsüyle doğrulanmalı" diye bırakmıştı — **doğrulandı**: `card`
-  recipe'i `overflow: hidden` + `clickRegion` kabı kaplayan bir `<button>`;
-  global `:focus-visible` outline'ı `outlineOffset: 0.125rem` ile dışarı taşıyor
-  ve ata onu yutuyor. `ApprovalQueue`'da ölçüldü.
-- **`ListingCard.actions` tıklanabilir `<button>`'ın İÇİNDE render ediliyor** →
-  iç içe etkileşimli element (geçersiz HTML + axe `nested-interactive`). JSDoc'u
-  "actions'a tıklamak onClick'i tetiklemez" diyor ama oraya buton koymak kartı
-  kırıyor. `ApprovalQueue` slot'a yalnız rozet koydu, butonları kartın kardeşi
-  yaptı.
-- **`ListingCard` 320 pikselde `detailed`**: `media` 176 piksel sabit, `body`'nin
-  `clientWidth`'i **32**, `scrollWidth`'i 277 — içerik kartın `overflow: hidden`'ıyla
-  kırpılıyor. Kırpıldığı için köke taşma olarak yansımıyor, yani **hiçbir test
-  görmüyor**.
-- **`UserSummaryCard` `<button>` olurken içine akış içeriği koyuyor** (`<dl>`,
-  `<p>`): buton içine akış içeriği geçersiz HTML. AGENTS'ın "kart `<button>`
-  olabiliyorsa bütün çocukları phrasing content" maddesi StatCard/ReportCard/
-  ListingCard'ı sayıyor ama **UserSummaryCard'ı atlamış** — ve reset maddesi onu
-  `<dl>` kullanıcısı diye anıyor: iki kural bu dosyada çarpışıyor.
-- **`DataTable.mobileMode` viewport'a bakmıyor.** JSDoc'u "dar ekranda ne olacağı"
-  diyor ama dal koşulsuz; `mobileMode="cards"` 1440'ta da kart çiziyor. Üç ekran
-  bağımsız olarak buna çarptı ve ikisi çift render + medya sorgusuyla çözdü
-  (çift DOM bedeli), `AuditLogPage` `scroll` seçtiği için kaçtı. Kalıcı çözüm
-  `css.cards`'a medya sorgusu.
 - **`DataTable.onRowClick` yalnız fare** — `<tr onClick>`, rol/tabIndex/tuş
   dinleyicisi yok. Satır açmayı ona bağlayan tablo klavyeye ölü olur; üç ekran da
   bunun yerine hücre içinde gerçek `<button>` kullandı.
 - **`DataTable.rowLabel` yalnız `selectable` iken okunuyor** — seçimsiz tabloda
   ölü prop.
-- **`RadioGroup`: `label` verilince her seçenek grubun adını devralıyor** — üç
-  tema da "Kendi temam" diye okunuyor. Zincir: `FieldShell`→`Field.Root` bir
-  `LabelableProvider` açıyor, `Field.Label` id'sini oraya yazıyor; ne `RadioGroup`
-  ne `Radio` kendi labelable kapsamını açıyor (Base UI `Field.Item` bekliyor), o
-  yüzden `useAriaLabelledBy`'nin `explicit ?? labelId ?? fallback`'i grubun
-  id'sini sarmalayan `<label>`'ın önüne geçiriyor. **axe yakalamaz** — ad _eksik_
-  değil, _yanlış_. `RadioGroup.stories.tsx`'te **hiç play testi yok** ve
-  `SettingsPage` primitive'in ilk gerçek tüketicisi.
-- **`InputProps` "mesajsız geçersiz"i ifade edemiyor**: `data-invalid` yalnız
-  dolu bir `error`'dan doğuyor ve `error` aynı zamanda metni basıyor. Sonuç:
-  **giriş hatasında alanlar kırmızı kenarlık almıyor** (`AuthScreen`). Gereken:
-  `error`'dan bağımsız `invalid?: boolean`.
-- **`EmptyState`/`ErrorState` başlığı `<p>` basıyor** — tam sayfa bir ekran
-  (`AuthScreen`) onları kullanamıyor, çünkü sayfanın `<h1>`'i olmalı. Brifing
-  2.11 ikisini de türetiyor. `ListingFactsProps.headingLevel` ile aynı aile;
-  fark şu ki burada **gerçek bir tüketici** var.
-- **`ErrorState`'in güvenli geri dönüş slotu yok** (brifing 2.1) — `AuditLogPage`
-  bağlantıyı kendi çiziyor ve bu yüzden ekran Router context'i gerektiriyor.
+- **`NumberInput` basamak butonu ve `DataTable` scroller'ının odak halkası**
+  `overflow` atası içinde kırpılabiliyor (görsel harness'ta işaretlendi, Faz 1/2
+  kaynaklı, öbek B kapsamı dışıydı). ListingCard'ın çözümü (negatif
+  `outline-offset`) emsal.
+- **`ApprovalQueue`'nun `new RegExp(riskliIlan.title)` iddiası kırılgan** — fixture
+  başlığında regex metakarakteri (`+`, `(`, `?`) varsa sessizce eşleşmez; bugün o
+  fixture'ın başlığında yok ama yeniden adlandırma kırar. `İ`/`i` tuzağının
+  kardeşi: metni regex'e sokarken kaçır ya da düz dize kullan.
 - **`ImageGallery` → `BrokenImageShowsExplanation` kırılgan**: tam paralel yükte
   (66 dosya) düşüyor, tek başına 21/21 geçiyor. Kırık görselin `onerror`'ı ile
   `findByText` yarışıyor. Faz 3 öncesinden var, Faz 3 dokunmadı.
