@@ -47,6 +47,7 @@ import {
   type LandAttributes,
   type Listing,
   type ListingContact,
+  type ListingMetrics,
   type ListingPromotion,
   type ListingSubCategory,
   type ListingTransactionType,
@@ -861,6 +862,32 @@ export const LISTING_FIELD_LABEL = {
   revision: 'Revizyon',
   tags: 'Etiketler',
 } satisfies Record<keyof Listing, string>
+
+/**
+ * İlanın performans sayaçlarının adı (`listing.metrics`).
+ *
+ * Faz 3'te eklendi. `LISTING_FIELD_LABEL` yalnız kabın adını ("Metrikler")
+ * biliyordu; içindeki dört sayaç etiketsizdi, oysa brifing 2.5 metrikleri
+ * gösterilecek veri sayıyor ve 2.3 ilan listesinde "görüntülenme sayısı" ile
+ * "rapor sayısı" kolonlarını istiyor. Faz 2'de sahibi olan bir composite yoktu
+ * (`ListingFacts` bilerek almadı: işi "kategoriye göre **alanları** göstermek",
+ * sayaç bir alan değil); tüketici Faz 3'te geldi — `ListingListPage` kolon
+ * başlığı, `ListingReviewPanel` metrik bloğu olarak okuyor.
+ *
+ * Ayrı sözlük, çünkü `LISTING_FIELD_LABEL`'ın anahtar uzayı `keyof Listing` ve
+ * `viewCount` orada yok: `metrics`'in **içinde**. İçeri düz eklemek
+ * `satisfies Record<keyof Listing, string>` denetimini kırardı — o denetim de
+ * tam olarak "yeni bir Listing alanı etiketsiz kalmasın" diye orada.
+ *
+ * `reportCount` burada ilanın aldığı şikayet sayısıdır; `UserAccount.reportCount`
+ * (kullanıcının aldığı) ile karıştırmayın — ikisi farklı sorular, adları aynı.
+ */
+export const LISTING_METRIC_LABEL = {
+  viewCount: 'Görüntülenme',
+  favoriteCount: 'Favoriye Ekleme',
+  messageCount: 'Mesaj',
+  reportCount: 'Şikayet',
+} satisfies Record<keyof ListingMetrics, string>
 
 export const RESIDENTIAL_ATTRIBUTE_LABEL = {
   grossSquareMeters: 'Brüt m²',
