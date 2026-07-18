@@ -393,8 +393,21 @@ gerekçesiyle yorumlu); dört sütunda satırı izlemeye hücre kenarlıkları y
 Bir matrisin satır-başlığı sütunu ~15-25rem ister ve arada token yok. Sütuna
 `minWidth` uydurmak yerine **tabloya** `minWidth: container.sm` verildi: 320
 pikselde etiketler kelime kelime kırılmak yerine kaydırma çubuğu çıkıyor, geniş
-ekranda `width: 100%` devralıyor. Yeni token eklemeden çözüldü ama **boşluk
-duruyor** — aynı ihtiyaç tekrarlarsa token eklemek doğru olabilir.
+ekranda `width: 100%` devralıyor.
+
+**Faz 3 uyarısı — o cümlenin ikinci yarısı YALANDI ve düzeltildi:** kaydırma
+çubuğu çıkmıyordu, **sayfa** 604 piksele genişliyordu. İki ayrı sebep vardı ve
+ikisi de düzeltildi: `scroller`'ın `minWidth: 0`'ı yoktu (grid öğesi, min-content'e
+çivilenmişti) ve `position: relative`'i yoktu (mutlak konumlu gizli etiketleri
+kırpamıyordu — yukarıdaki `overflow` maddesine bak). **Ölçüm iddiası yazılmadan
+"çalışıyor" denmiş bir davranıştı; ekran görüntüsü söyledi, testler değil.**
+
+**Token boşluğu ise ÜÇ kez daha vurdu** (`ListingListPage`'in başlık sütunu,
+`ListingReviewPanel`'in yan rayı, `AuthScreen`'in giriş kartı ~24rem istiyor).
+Faz 2 "aynı ihtiyaç tekrarlarsa token eklemek doğru olabilir" demişti — tekrarladı.
+Ekranlar ham `rem` uydurmak yerine `container.sm`'e ya da `fr` oranına düştü;
+`AuthScreen`'in kartı bu yüzden 1440'ta geniş okunuyor. **Token eklemek artık
+gerekçeli.**
 
 **Kart `<button>` olabiliyorsa bütün çocukları phrasing content olmak zorunda.**
 Buton içine akış içeriği (`<p>`, `<div>`) koymak geçersiz HTML'dir ve tarayıcılar
@@ -407,6 +420,112 @@ alabilen her component'te tekrarlanacak (StatCard, ReportCard, ListingCard).
 query yok: "mobilde dikey sıralanır" iddiası dar bir decorator kabında play ile
 **ölçülemez**. Dikey sıralamanın kendisi ekran görüntüsünün işi; play yalnız
 yatay taşmayı ölçebilir.
+
+### Faz 3'te ölçülen tuzaklar — hepsi yeni, hepsi ölçüldü
+
+**`overflow: hidden`, kapsayan bloğu OLMADIĞI mutlak konumlu torunu KIRPMAZ — ve
+`clip`'li gizli etiketler sayfayı yatay kaydırtır.** Faz 3'ün en pahalı hatası ve
+tek başına hiçbir testin göremeyeceği cinsten. RolePermissionMatrix 320 pikselde
+sayfayı **604 piksele** genişletiyordu. Suçlu tablo değildi (tablo scroller'ında
+düzgünce kırpılıyor): hücrelerdeki `Checkbox`'ların `hideLabel` etiketleri —
+`position: absolute` + `width: 1px` + `clip: rect(0,0,0,0)`. Scroller
+`position: static` olduğu sürece o span'lerin **kapsayan bloğu değil**; span'ler
+640 pikselik tablonun içindeki statik yerlerine göre konumlanıp (en sağdaki
+`left: 603`) kabın dışına taşıyor ve viewport'un kaydırma alanını 604'e
+çekiyorlardı. **`clip` onları görsel olarak siler ama kaydırma alanından
+silmez** — görünmez 1 pikseller sayfayı kaydırtıyordu.
+
+Teşhis şöyle ayrıştı (hepsi ölçüldü): kaba `contain: paint` vermek **düzeltiyor**
+(kapsayan blok yapar), `overflow: hidden` vermek **düzeltmiyor**, `<tbody>`'yi
+silmek düzeltiyor (kutular gider), tek tek her öğe "taşmıyorum" diyor ama
+viewport 604'te ısrar ediyor. Çözüm: kaba **`position: relative`**. Aynı desen
+`visuallyHidden` etiketi olan **her kontrolü bir kaydırma kabına koyan** herkesi
+ilgilendirir.
+
+**Grid öğesinin `min-width` varsayılanı `auto`'dur, yani min-content — ve bu
+ailenin dört üyesi vardı.** İz bildirilmezse örtük iz `auto` olur, tabanı
+min-content'tir ve öğe onun altına inemez: kaydırması gereken kap kaydırmaz,
+**sayfa** kaydırır. Faz 3'te dört yerde birden ölçüldü ve dördü de düzeltildi:
+
+- **`Tabs.root`** yalnız satır izini bildiriyordu; `panel` içindeki geniş tablo
+  izi 629 piksele kilitliyordu (`UserDetailPage`). `gridTemplateColumns:
+'minmax(0, 1fr)'` eklendi (`vertical`'ın `1fr`'i de). Aynı hata component'in
+  **kendi sözleşmesini** de deliyordu: `list` "sekmeler taşarsa kaydırılır"
+  diyor ama iz max-content'e açıldığı için şerit hiç kaydırmıyordu.
+- **`FieldShell.root`** — dokuz component'in altyapısı; `minmax(0, 1fr)` eklendi.
+- **`FilterBar.rangeInputs`** — `1fr 1fr` izleri `<input>`un tarayıcı varsayılanı
+  (~199px) + iki basamak = iz başına ~281 pikselde tabanlanıyordu; `numberRange`
+  filtresi veren her tüketici ~590 pikselin altında taşıyordu.
+- **`RolePermissionMatrix.scroller`** — `minWidth: 0` eklendi.
+
+**`NumberInput.input`'a `minWidth: 0` yazmak bunu ÇÖZMEZ**: `min-width` bir
+min-content katkısını yalnız **tabanlar**, asla tavanlamaz — tavanlayan şey izin
+kendisidir (`minmax(0, …)`).
+
+Kaçan tüketiciler tesadüfen kaçtı: **kaydırma kabı olan bir grid öğesinin
+otomatik minimum boyutu sıfırdır**, o yüzden `overflow: hidden` taşıyan bir
+sarmalayıcının içindeki tablo sorunu göstermiyordu (`DataTable`'ın `striped`
+görünümü kurtarıyordu, `plain` kurtarmıyordu).
+
+**`position: sticky` bir grid öğesine konursa sessizce hiç yapışmaz.** Sticky
+kapsayan bloğuna hapsolur ve grid öğesinin kapsayan bloğu **kendi grid
+alanıdır**: çubuğu bir grid satırına koymak onu kendi boyunda bir kutuya kilitler.
+`ListingReviewPanel`'in kökü bu yüzden flex kolon, grid değil.
+
+**Türkçe `İ` ile `i` `i` bayrağında EŞLEŞMEZ — iddia sessizce her koşulda
+geçer.** `/işlem geçmişi/i` **"İşlem Geçmişi" ile eşleşmiyor**: JS'in `i` bayrağı
+Canonicalize'ı `toUpperCase` üzerinden yapıyor; `'i'.toUpperCase()` `'I'`
+(U+0049) verirken `'İ'` (U+0130) zaten büyük harf olduğu için kendisi kalıyor ve
+ikisi eşit olmuyor. `u` bayrağı da kurtarmıyor (üçü de ölçüldü). "Audit sekmesi
+yok" iddiası lowercase yazıldığında **sekme dururken bile geçiyordu**. Bu,
+"Türkçe regex'i küçük harfle yazma" maddesinin mekanizması: `İ` ile başlayan her
+kelimede (`İlan`, `İşlem`, `İletişim`, `İçerik`) yokluk iddiası dişsizleşir.
+Kontrol grubu (aynı şeyin **var** olduğunu ölçen ikinci story) bu yüzden hayati.
+
+**Story adları tip ve global adlarıyla yarışır.** İki kardeş ölçüldü:
+`export const Error` modül kapsamında global `Error`'ı gölgeliyor → story
+dosyasında `throw new Error(...)` yazılamıyor ("Error is not a constructor").
+`export const Paginated`, import edilen `type Paginated` ile çakışıyor → TS2395
+("Individual declarations in merged declaration must be all exported or all
+local"). Zorunlu story adları (`Error`) verilmiş olduğu için ilkinden kaçış yok;
+iddiaları `expect` + erken dönüşle yaz.
+
+**Base UI popup'ın AÇILIŞ animasyonu da yarış üretir — kapanışın kardeşi.**
+`Modal.css.ts` popup'ı `animation: scaleIn 180ms` + `from { opacity: 0 }`
+kullanıyor; `findByRole` popup mount olduğu an çözülüyor ve `toBeVisible()`
+animasyonun **ilk karesinde** koşuyor: computed opacity tam olarak `"0"` ve
+jest-dom'un `isStyleVisible`'ı `opacity !== '0'` şartıyla reddediyor. Dialog
+gerçekten açılıyordu, **ölçüm erkendi**. Çözüm zayıflatmak değil beklemek
+(`dialogGorunurOlsun`, `popupKapanmasiniBekle`'nin simetriği).
+
+**`document.querySelectorAll` Storybook'un kendi mobilyasını da yakalar.**
+"Arka planı ve portalı aynı anda ölç" kuralı doğru ama kapsamı eksikti:
+`document`'te `<table class="sb-argstableBlock">` (`<div class="sb-preparing-docs">`
+içinde, `<body>`'nin doğrudan çocuğu) duruyor ve story'yle hiç ilgisi yok. Arka
+plan iddiaları **`canvasElement.querySelectorAll`** ile yazılmalı; portal zaten
+`within(document.body)` ile ayrıca ölçülür. Aynı mobilya ekran görüntüsü
+ölçümlerini de kirletiyor: `document`'e sorarsan her ekranda bir
+`<h1>No Preview</h1>` "bulursun" — ölçümü `#storybook-root`'a daralt.
+
+**`getByText`'in "yalnız doğrudan metin çocuğu" davranışı, AYNI metnin ikinci
+kopyasına karşı koruma DEĞİL.** "Konut"u "Konut İmarlı"dan ayırıyor (alt dize
+değil doğrudan metin), ama `AttributeEditor` kapsamı okunur rozet olarak
+basınca ("Konut", "Daire", "Villa") aynı metin ekranda **iki kez** oluyor ve
+sorgu "Found multiple elements" ile düşüyor. Ayrım için **kapsam** gerekir
+(`within(agac)`), doğrudan-metin davranışı değil.
+
+**`CATEGORY_SUB_CATEGORIES[category].map(...)` derlenmez.** Sözlük kategori
+başına _farklı dizi tipi_ taşıyor; TS dizi birleşiminde `.map`'i çağıramıyor. Ara
+değişken şart: `const alt: readonly ListingSubCategory[] = CATEGORY_SUB_CATEGORIES[category]`.
+İlk tüketicisi `CategoryAttributePage`'di.
+
+**`pnpm test-storybook --run -- <yol>` FİLTRELEMEZ** — `--` geçince vitest 66
+dosyanın hepsini koşuyor (~190 sn). Doğrusu `--`'siz: `pnpm test-storybook --run
+src/screens/X` (~5 sn).
+
+**`mcp__ide__getDiagnostics` bu repoyu tip denetlemiyor** — kasıtlı bir
+`const x: number = "string"` için bile boş dönüyor. Yeşil ışık sanma; `pnpm
+typecheck` çalıştır.
 
 ### Faz 2'de çıkan diğer tuzaklar
 
@@ -447,16 +566,19 @@ alıp tek alanı yazan hâl de (`const yeni: Flags = { ...flags }; yeni[key] = n
 tip güvenli. **Fixture ve domain sözlüklerinde de aynı kalıp olabilir, taranmaya
 değer.**
 
-**Storybook'un viewport global'i ile test tarayıcısının gerçek viewport'u aynı
-şey olmayabilir.** Vitest browser modunun varsayılan viewport'u 414×896 ve
-`vite.config.ts`'te ezilmiyor; addon-vitest'in `globals.viewport`'u gerçekten
-uygulayıp uygulamadığı **doğrulanamadı**. Bu yüzden medya sorgusuna bağlı play
-iddiaları (hamburger masaüstünde `display: none`, fixed/collapsible geometrisi)
-kırılgandır — yalnız viewport'tan bağımsız şeyleri ölç (landmark sayısı, dar
-ekranda taşma yok, DOM'da var/yok). Sorguları `{ hidden: true }` ile yaz: iddia
-"DOM'da var/yok" düzeyine iner ve yokluk iddiası güçlenir ("gizli değil, hiç
-yok"). **Entegrasyon fazı viewport'un uygulandığını doğrularsa** geometrik
-testler eklenebilir.
+**Storybook'un viewport global'i UYGULANIYOR — Faz 3'te doğrulandı.** Faz 2 bunu
+"doğrulanamadı" diye bırakmıştı; `ListingListPage` → `MobileCards` içinde ölçüldü:
+`globals: { viewport: { value: 'mobile320' } }` verilen story'de
+`window.innerWidth === 320` ve `canvasElement.clientWidth === 320` (vitest'in
+varsayılanı 414 olsaydı 414 görürdük). **Yani medya sorgusuna bağlı geometrik
+testler artık yazılabilir.**
+
+Yine de iki uyarı duruyor: (1) repoda **container query yok**, dolayısıyla
+"mobilde dikey sıralanır" iddiası dar bir decorator kabında değil ancak
+viewport'la ölçülür; (2) `display: none` olan dal `getByRole`'e **görünmez** —
+iki dalı birden render eden ekranlarda (`ListingListPage`, `UserManagementPage`,
+`ReportManagementPage`) sorguyu kapsayıcıya daraltın ya da `{ hidden: true }`
+kullanın, yoksa "found multiple elements" alırsınız.
 
 **`<header>` Storybook'ta banner sayılır, uygulamada sayılmaz.** AppShell'in
 `<main>`'i içindeki `<header>` landmark üretmez (banner üst seviyede oluşur, o
@@ -497,31 +619,46 @@ yazılamıyordu; üçüncüsünde ise hiç konuşmamıştı (gerekçeler tabloda
 alma, ama kullanıcı görünce itiraz ederse tartışmaya açık; diğer satırlar gibi
 kapanmış sayma.
 
-| Konu                         | Sapma                                                         | Gerekçe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ---------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `erasableSyntaxOnly`         | Kapatıldı                                                     | `domain.ts` enum kullanıyor, enum çalışma anında kod üretiyor (TS1294)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `value?: T`                  | `value?: T \| undefined`                                      | `onValueChange` `undefined` veriyordu ama `value` geri almıyordu — gidiş-dönüş kırıktı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `CheckboxProps.onChange`     | `onCheckedChange`                                             | Switch ile tutarlı; Base UI zaten `ChangeEvent` üretmiyor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `InputProps`                 | `ref` eklendi                                                 | SearchInput temizleme sonrası odağı geri vermeli                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `CheckboxProps`              | `hideLabel` eklendi                                           | Tablo satırında etiket her satırda tekrar edip tabloyu okunmaz yapıyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `DataTableProps`             | `rowLabel` eklendi                                            | Etiketsiz kullanıcı 12 satırda da aynı metni duyar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `InputProps`/`TextareaProps` | `required` native'den çıkarıldı                               | `exactOptionalPropertyTypes` ile TS2320 çakışması                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `ListingFilterValues`        | `string[]` → `SellerType[]`/`PromotionType[]`                 | Brifingin kendi tip güvenliği kuralı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Fixture opsiyonel tarihleri  | Koşullu spread                                                | Brifingin kodu `exactOptionalPropertyTypes` ile derlenmiyordu (TS2375)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Durum renkleri               | `paused`→nötr-200, `expired`→warning-100, `archived`→nötr-300 | 8 durum yalnız 6 farklı zemin üretiyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `AdminPermission`            | `ThemeSetDefault` eklendi                                     | Matris tema seçimi ile sistem varsayılanını ayırmış, enum ayırmamıştı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `AdminPermission`            | `UserEditProfile` eklendi                                     | Brifing 1.4 `moderator`'un kullanıcı düzenlemesine "Sınırlı" diyor ama enum yalnız tam yetkili `UserEdit`'i tanıyordu ve `ROLE_PERMISSIONS` moderator'a onu veriyordu: **matris sınırlarken kod tam yetki veriyordu.** Kapsam: ad, e-posta, telefon, avatar, firma adı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `AdminPermission`            | `UserEditContact` eklendi                                     | Aynı hücrenin `destek` hâli ("Sınırlı destek alanları"), daha dar kapsam: yalnız e-posta ve telefon. `UserEdit` artık tam yetki olarak yalnız `superAdmin`'de                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `AdminPermission`            | `ReportTriageLimited` eklendi                                 | Matris `icerikDenetcisi`'nin şikayet triage'ına "Sınırlı" diyor, `ROLE_PERMISSIONS` tam `ReportTriage` veriyordu. Kademe okur, sınıflandırır, eskale eder; `severity` ve `assignedAdminId` değiştiremez                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `AdminPermission`            | `UserViewProfile` eklendi                                     | Matrisin **dördüncü ve son** "Sınırlı" hücresi (satır 304, "Kullanıcı görüntüleme" × `destek`); `ROLE_PERMISSIONS` oraya tam `UserView` veriyordu — çözülen üç hücrenin hatasının aynısı. Ayıran ilke **destek durumu açıklar, moderatör durumu belirler**: destek "askınız 29 Tem'de bitiyor" diyebilmeli, "neden askıya alındığını" okumak kararı veren rolün işi. Görünür: ad, avatar, tip, firma, `verified`, e-posta, telefon (destek `UserEditContact` ile zaten düzenliyor — göremediğini düzenlemek anlamsız), `status` + yürürlükteki yaptırımın `endsAt`'i, `createdAt`, ilan sayaçları, `reportCount`, kullanıcının kendi ilanları. Gizli: `UserSanction.reason` (iç gerekçe metni — müşteriye okunacak cümle değil), yaptırım geçmişi ve `createdByAdminId`, `lastLoginAt`, `adminRole`. `UserSummaryCard`'ın `security` varyantı = tam görünüm, `destek` görmez |
-| `status.*` token'ı           | Dördüncü slot: `solid`                                        | Solid rozet zeminini `border`'dan okuyordu; kenarlık 3:1'e (WCAG 1.4.11), metin zemini 4.5:1'e borçlu — dört durum AA'dan düşüyordu (draft 2.56, pendingReview 3.18, changesRequested 4.09, published 3.29). Alternatif "600'leri koyulaştır" **reddedildi**: 600'ler ağırlıkla kenarlık/nokta olarak kullanılıyor (31 yer) ve zaten 3:1 ile geçiyorlardı, üstelik neutral-400'ü 4.5'e çekmek onu neutral-500'e yapıştırıp rampadan basamak siliyordu. Yan fayda: `paused` ile `archived` ikisi de neutral-600'e düşüp solid'de **aynı** görünüyordu (7/8) — kademe artık 500→600→700                                                                                                                                                                                                                                                                                        |
-| `FilterValue`                | `NumberRange` eklendi                                         | Brifing `numberRange` filtre tipi tanımlamış ama birleşimde aralık üyesi yok; tek `number` "en az 500.000" ile "en çok 500.000"ü ayıramıyor. `dateRange`'in `DateRange`'i zaten vardı, bu onun simetriği                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `FilterDefinition`           | `searchable` eklenmedi, 8 seçenek eşiği kondu                 | Brifing il/ilçe/mahalle'nin aranabilir olmasını şart koşuyor ama bayrak tanımlamamış; eşik (`ARAMA_ESIGI`) sözleşmeyi büyütmeden çözüyor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| DTCG token JSON              | Eklenmedi                                                     | Tasarımcı/Figma yok; gelince Style Dictionary ile eklenir                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `Button.test.tsx`            | Yazılmıyor                                                    | addon-vitest story testleri aynı işi yapıyor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `AutomatedCheckItem`         | Silindi; panel `AutomatedCheckResult[]` alıyor                | Kullanıcı onayladı. `ModerationSummary.automatedChecks` zaten o tip; ayrı DTO her ekrana elle çeviri yaptırıp `status`'ü enum'dan string'e düşürüyor ve `label`'ı domain'den component'e taşıyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `PHOTO_REJECTION_REASONS`    | Fotoğraf reddine 7 gerekçelik alt küme                        | **Sorulmadan karar verildi.** Brifing fotoğraf reddinde de `RejectionReason`'ı kullanıyor ama alt küme tanımlamamış; "Fiyat Hatası" veya "Yanlış Kategori" bir fotoğrafın suçu olamaz, 15 seçenek yanlış gerekçe seçtirir                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `BaseFixtureArgs.revision`   | Eklendi (varsayılan 1)                                        | `moderationEvents.ts`'te `edited` olayı olan ilan revizyon 1'de kalamaz; fixture kendi geçmişiyle çelişemez                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Konu                             | Sapma                                                          | Gerekçe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `erasableSyntaxOnly`             | Kapatıldı                                                      | `domain.ts` enum kullanıyor, enum çalışma anında kod üretiyor (TS1294)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `value?: T`                      | `value?: T \| undefined`                                       | `onValueChange` `undefined` veriyordu ama `value` geri almıyordu — gidiş-dönüş kırıktı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `CheckboxProps.onChange`         | `onCheckedChange`                                              | Switch ile tutarlı; Base UI zaten `ChangeEvent` üretmiyor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `InputProps`                     | `ref` eklendi                                                  | SearchInput temizleme sonrası odağı geri vermeli                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `CheckboxProps`                  | `hideLabel` eklendi                                            | Tablo satırında etiket her satırda tekrar edip tabloyu okunmaz yapıyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `DataTableProps`                 | `rowLabel` eklendi                                             | Etiketsiz kullanıcı 12 satırda da aynı metni duyar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `InputProps`/`TextareaProps`     | `required` native'den çıkarıldı                                | `exactOptionalPropertyTypes` ile TS2320 çakışması                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ListingFilterValues`            | `string[]` → `SellerType[]`/`PromotionType[]`                  | Brifingin kendi tip güvenliği kuralı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Fixture opsiyonel tarihleri      | Koşullu spread                                                 | Brifingin kodu `exactOptionalPropertyTypes` ile derlenmiyordu (TS2375)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Durum renkleri                   | `paused`→nötr-200, `expired`→warning-100, `archived`→nötr-300  | 8 durum yalnız 6 farklı zemin üretiyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `AdminPermission`                | `ThemeSetDefault` eklendi                                      | Matris tema seçimi ile sistem varsayılanını ayırmış, enum ayırmamıştı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `AdminPermission`                | `UserEditProfile` eklendi                                      | Brifing 1.4 `moderator`'un kullanıcı düzenlemesine "Sınırlı" diyor ama enum yalnız tam yetkili `UserEdit`'i tanıyordu ve `ROLE_PERMISSIONS` moderator'a onu veriyordu: **matris sınırlarken kod tam yetki veriyordu.** Kapsam: ad, e-posta, telefon, avatar, firma adı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `AdminPermission`                | `UserEditContact` eklendi                                      | Aynı hücrenin `destek` hâli ("Sınırlı destek alanları"), daha dar kapsam: yalnız e-posta ve telefon. `UserEdit` artık tam yetki olarak yalnız `superAdmin`'de                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `AdminPermission`                | `ReportTriageLimited` eklendi                                  | Matris `icerikDenetcisi`'nin şikayet triage'ına "Sınırlı" diyor, `ROLE_PERMISSIONS` tam `ReportTriage` veriyordu. Kademe okur, sınıflandırır, eskale eder; `severity` ve `assignedAdminId` değiştiremez                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `AdminPermission`                | `UserViewProfile` eklendi                                      | Matrisin **dördüncü ve son** "Sınırlı" hücresi (satır 304, "Kullanıcı görüntüleme" × `destek`); `ROLE_PERMISSIONS` oraya tam `UserView` veriyordu — çözülen üç hücrenin hatasının aynısı. Ayıran ilke **destek durumu açıklar, moderatör durumu belirler**: destek "askınız 29 Tem'de bitiyor" diyebilmeli, "neden askıya alındığını" okumak kararı veren rolün işi. Görünür: ad, avatar, tip, firma, `verified`, e-posta, telefon (destek `UserEditContact` ile zaten düzenliyor — göremediğini düzenlemek anlamsız), `status` + yürürlükteki yaptırımın `endsAt`'i, `createdAt`, ilan sayaçları, `reportCount`, kullanıcının kendi ilanları. Gizli: `UserSanction.reason` (iç gerekçe metni — müşteriye okunacak cümle değil), yaptırım geçmişi ve `createdByAdminId`, `lastLoginAt`, `adminRole`. `UserSummaryCard`'ın `security` varyantı = tam görünüm, `destek` görmez |
+| `status.*` token'ı               | Dördüncü slot: `solid`                                         | Solid rozet zeminini `border`'dan okuyordu; kenarlık 3:1'e (WCAG 1.4.11), metin zemini 4.5:1'e borçlu — dört durum AA'dan düşüyordu (draft 2.56, pendingReview 3.18, changesRequested 4.09, published 3.29). Alternatif "600'leri koyulaştır" **reddedildi**: 600'ler ağırlıkla kenarlık/nokta olarak kullanılıyor (31 yer) ve zaten 3:1 ile geçiyorlardı, üstelik neutral-400'ü 4.5'e çekmek onu neutral-500'e yapıştırıp rampadan basamak siliyordu. Yan fayda: `paused` ile `archived` ikisi de neutral-600'e düşüp solid'de **aynı** görünüyordu (7/8) — kademe artık 500→600→700                                                                                                                                                                                                                                                                                        |
+| `FilterValue`                    | `NumberRange` eklendi                                          | Brifing `numberRange` filtre tipi tanımlamış ama birleşimde aralık üyesi yok; tek `number` "en az 500.000" ile "en çok 500.000"ü ayıramıyor. `dateRange`'in `DateRange`'i zaten vardı, bu onun simetriği                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `FilterDefinition`               | `searchable` eklenmedi, 8 seçenek eşiği kondu                  | Brifing il/ilçe/mahalle'nin aranabilir olmasını şart koşuyor ama bayrak tanımlamamış; eşik (`ARAMA_ESIGI`) sözleşmeyi büyütmeden çözüyor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| DTCG token JSON                  | Eklenmedi                                                      | Tasarımcı/Figma yok; gelince Style Dictionary ile eklenir                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `Button.test.tsx`                | Yazılmıyor                                                     | addon-vitest story testleri aynı işi yapıyor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `AutomatedCheckItem`             | Silindi; panel `AutomatedCheckResult[]` alıyor                 | Kullanıcı onayladı. `ModerationSummary.automatedChecks` zaten o tip; ayrı DTO her ekrana elle çeviri yaptırıp `status`'ü enum'dan string'e düşürüyor ve `label`'ı domain'den component'e taşıyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `PHOTO_REJECTION_REASONS`        | Fotoğraf reddine 7 gerekçelik alt küme                         | **Sorulmadan karar verildi.** Brifing fotoğraf reddinde de `RejectionReason`'ı kullanıyor ama alt küme tanımlamamış; "Fiyat Hatası" veya "Yanlış Kategori" bir fotoğrafın suçu olamaz, 15 seçenek yanlış gerekçe seçtirir                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `BaseFixtureArgs.revision`       | Eklendi (varsayılan 1)                                         | `moderationEvents.ts`'te `edited` olayı olan ilan revizyon 1'de kalamaz; fixture kendi geçmişiyle çelişemez                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Faz 3 — aşağıdakiler**         |                                                                |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `AsyncState`                     | `{ status: 'idle' \| 'loading' }` **iki üyeye bölündü**        | Anlam aynı, **daraltılabilirlik** değil: discriminant'ı birleşim olan üyeyi TS `===` ile eleyemiyor (yalnız `switch` çalışıyor), sonraki satırda `state.data` TS2339 veriyor. Beş ekran bağımsız olarak doğal deyimi yazıp aynı duvara çarptı — kusur ekranlarda değil sözleşmedeydi. tsc 6.0.3 ile izole doğrulandı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `StatCardProps.sparkline`        | **Eklenmedi**; `variant` JSDoc'undaki "mini eğri" sözü silindi | Veri yedi KPI'ın yalnız ikisinde var (`dailyNewListings`, `dailyModerationCount`) ve o ikisi zaten aynı ekranda tam boy `ChartCard`. Üstelik repo kararı Faz 2'de zaten vermişti: `ChartCardProps.height`'ın `sm`'i "eksensiz mini eğri; sayıyı StatCard söyler" diyor — iki JSDoc çelişiyordu, StatCard'ınki yanlıştı                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| "Kesin konumu görme" izni        | **Eklenmedi**                                                  | Brifing 1.4'te "İlan görüntüleme" **dört rolde de "Tam"**; ayrı izin o satırı sessizce "Sınırlı"ya çevirir, yani matrisi kod üzerinden değiştirirdi (Faz 2'nin dört kademesi tam tersini yapmıştı). Brifing 1.1 (satır 183) `showExactLocation`'ı "**son kullanıcıya** gösterilip gösterilmeyeceği" diye tanımlıyor — public sitenin sorusu. Kalan şey gösterim kapısı: `ListingReviewPanelProps.revealExactLocation`                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `ListingFactsProps.headingLevel` | **Eklenmedi**; varsayım doğrulandı                             | Tek tüketici (`ListingReviewPanel`) zinciri h1→h2→h3 kuruyor, yani `<h3>` doğruydu. Tüketicisi olmayan kanal açmak `sparkline`'da reddedilen hatanın aynısı olurdu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `TopBarProps` bildirim kanalı    | **Açık bırakıldı**                                             | Faz 3'ün hiçbir ekranı TopBar render etmiyor (kabuk Faz 4'ün). Tüketici görünmeden karar vermek uydurmak olurdu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `RolePermissionMatrixProps`      | `baseline` eklendi (varsayılan `ROLE_PERMISSIONS`)             | `diff`'in tabanı domain sabitine **gömülüydü**: `superAdmin` bir izni kaydettiği an sunucunun gerçeği sabitten ayrılır ve matris hiçbir şey değişmemişken "değişmiş" hücre gösterirdi. `SettingsPage` artık **kayıtlı** hâli taban veriyor. Görünür metin de düzeltildi ("varsayılan izinlerden farklı" → "önceki hâlinden farklı") — prop eklenip metin bırakılsaydı ekrandaki tek açıklama yalan söylerdi                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `SettingsPageProps`              | `savedRolePermissions` eklendi                                 | `baseline`'ın besleyicisi; brifing 3.5 "permission diff" düzenini zorunlu tutuyor ve tabansız kurulamıyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `UserSummaryCardProps`           | `activeSanction` eklendi                                       | Brifing 2.6 "aktif yaptırım"ı görünen veri sayıyor; kart yaptırımın yalnız **tipini** durumdan türetip "neden"i ve "ne zamana kadar"ı susarak geçiyordu. Alanları varyanta göre açılır ve bu bir **yetki sınırı**: `detailed` yalnız tip + `endsAt` (destek'in yüzü), `security` ayrıca `reason` + `startsAt` + `createdByAdminId`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `SellerPanelProps`               | `activeListingCount` + `sanctions` eklendi                     | Brifing 2.6 "toplam ve aktif ilan sayısı"nı, 3.4 `risk` varyantının "yaptırım geçmişi"ni istiyordu; ikisinin de kanalı yoktu. `sanctions` yalnız `risk`'te; `revokedAt` dolu kayıt işaretlenir ama **düşürülmez** (kaldırılmış yaptırım da sicildir)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `ReportCardProps`                | `now`, `reporter`, `assignedAdmin`, `relatedReportCount`       | Brifing 2.8'in dört verisi kanalsızdı. `now` zorunlu çünkü component saati **kendi okuyamaz** (göreli zaman tuzağı). **`AdminUser` diye bir tip YOK** — admin de `UserAccount`, `adminRole`'ü dolu; AGENTS'ın eski önerisi (`assignedAdmin?: AdminUser`) var olmayan bir tipe atıfta bulunuyordu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `LISTING_METRIC_LABEL`           | `labels.ts`'e eklendi                                          | `LISTING_FIELD_LABEL` yalnız kabın adını ("Metrikler") biliyordu; dört sayaç etiketsizdi. Ayrı sözlük çünkü anahtar uzayı `keyof ListingMetrics`, `keyof Listing` değil — içeri eklemek `satisfies` denetimini kırardı. Sahibi ekran: `ListingReviewPanel`'in metrik bloğu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `fixtures/audit.ts`              | **Eklendi**                                                    | Brifingin dosya ağacında (5.3) **yok** ama ekranı (2.10) var; `AuditLogPage` ve `UserDetailPage`'in audit sekmesi fixture'sız render edilemezdi. Sekiz kayıt, altı `entityType`'ın hepsi. `action` kodları `AdminPermission` sözlüğünden (audit'e giren her eylem bir izin kapısından geçmiştir → `ADMIN_PERMISSION_LABEL[action] ?? action`). `metadata` sözleşmesi: `{ correlationId, before, after }` — brifing 2.10'un üç verisini `domain.ts`'e alan eklemeden taşıyor                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `ThemeSelector` / `CodeBlock`    | Ayrı component **yazılmadı**; ekran içinde kuruldu             | Brifing 2.9/2.10 "türetilen componentler"de anıyor ama **kendi yetkili katalogunda (3.3 + 3.4) ikisi de yok** ve Faz 3'ün kapsamı 11 ekran. Tema seçimi `RadioGroup` + `RadioOption.description` ile (**`RadioGroup`'ta `cards` varyantı YOK** — 3.3'ün "cards"ı story düzeni sütunu), JSON detayı `<pre>` ile                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `publishedListingCount`          | Etiket "Yayına alınan ilan" (brifing "Toplam yayındaki ilan")  | Fixture'ın kendi gerekçesi sayının bir **akış** olduğunu kanıtlıyor: `rejectionRate = 281/(3.100+281)` ancak iki sayı aynı pencereden gelirse anlamlı. Sayı korundu, ismi düzeltildi                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 ## Teknoloji
 
@@ -582,15 +719,45 @@ gerçekleştirilemez JSDoc) ve matrisin dördüncü "Sınırlı" hücresi
 (`UserViewProfile`) karara bağlandı. **a11y kapısı `'error'`'a çekildi**, 26
 ihlalin hepsi temiz — dökümü "a11y kapısı" bölümünde.
 
-**Sırada: Faz 3'ün 11 ekranı.** Ekran tanımları brifingde (sırası gelince oku).
-Ama önce aşağıdaki **sözleşme boşlukları** bölümüne bak: kapananlar "KAPANDI"
-diye işaretli; kalanlar bilerek açık ve ekranlar yazılırken karara bağlanacak —
-`StatCardProps.sparkline`, `ChartCardProps.emptyState`,
-`RolePermissionMatrixProps.baseline`, `TopBarProps`'un bildirim kanalı,
-`UserSummaryCardProps.activeSanction`, `SellerPanelProps`'un sayaç/yaptırım
-boşlukları, `ReportCardProps`'un üçlüsü, `ListingFactsProps.headingLevel`,
-metrik alan etiketleri, `CategoryAttributeDefinition.updatedBy` ve "kesin konumu
-görme" izni. **Uydurma, sor.**
+**Faz 3 bitti: 11/11 ekran.** `src/screens/` altında dört dosyalık kalıpla
+(`DashboardStats`, `ListingListPage`, `ApprovalQueue`, `ListingReviewPanel`,
+`UserManagementPage`, `UserDetailPage`, `CategoryAttributePage`,
+`ReportManagementPage`, `SettingsPage`, `AuditLogPage`, `AuthScreen`).
+
+**Ölçümler (Faz 3 kapanışı):**
+
+- `format:check` + `lint` + `typecheck` + `test-storybook --run` + `build-storybook`
+  **hepsi geçiyor**: 66 dosya, **1.191 test**, a11y kapısı `'error'` açıkken.
+- **Manifest: 66 component, 495 prop, 0 açıklamasız**, react-docgen'in atladığı
+  component **yok**. (Faz 2: 55 / 391 / 0.) Ekran tipleri belgelendi — **borç
+  ikinci kez doğmadı.**
+- **Story sayısı 912 → 1.257** (260'ı `Screens/`). Chromatic kotası açısından:
+  1.257 × 3 tema × 2 viewport = **7.542 snapshot/build**, kota 5.000/ay. Matris
+  daraltılmadan Chromatic **kurulamaz**.
+- **320 pikselde yatay taşma: 11 ekranın hiçbirinde yok** (ölçüldü, aşağıya bak).
+
+**Ekranlar kabuk DEĞİL.** `AppShell`/`TopBar`/`SidebarNav`/`PageHeader` render
+etmiyorlar; Faz 4 onları kompoze edecek. Sonucu: ekranların `<h1>`'i yok, en üst
+başlıkları `<h2>` (`AuthScreen` hariç — o kabuğun dışında yaşayan tam sayfa ve
+kendi `<h1>`'ini basıyor). `ListingFacts`'in `<h3>` varsayımı bu zincirle
+**doğrulandı**: h1 (PageHeader/Faz 4) → h2 (ekranın bölümü) → h3.
+
+**Sırada: Faz 4** — router, `App` kabuğu, container katmanı, `SidebarNav`'ın
+yetki süzgecinin gerçek yerine taşınması. Ekranlar veriyi prop olarak alıyor;
+onları besleyecek katman yok.
+
+**Faz 3 bitti.** Yukarıdaki listede açık bırakılan boşlukların **hepsi karara
+bağlandı** ve aşağıda "KAPANDI" diye işaretli — `StatCardProps.sparkline`
+(eklenmedi), `RolePermissionMatrixProps.baseline` (eklendi),
+`UserSummaryCardProps.activeSanction` (eklendi), `SellerPanelProps`'un
+sayaç/yaptırım boşlukları (eklendi), `ReportCardProps`'un üçlüsü (dördü eklendi),
+`ListingFactsProps.headingLevel` (gerek yok, doğrulandı), metrik alan etiketleri
+(`LISTING_METRIC_LABEL`), "kesin konumu görme" izni (gerekmiyor). Gerekçeler
+sapmalar tablosunda.
+
+**Açık kalan ikisi:** `TopBarProps`'un bildirim kanalı (Faz 3'ün hiçbir ekranı
+TopBar render etmiyor — tüketicisi Faz 4'te doğacak) ve
+`CategoryAttributeDefinition.updatedBy` (backend sözleşmesi). **Uydurma, sor.**
 
 ### Moderasyon grubunda kurulan yapılar
 
@@ -746,7 +913,8 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   niteliğin _varlığı_ ile bir önermenin _doğruluğu_ aynı kelimeyle söylenmez —
   balkon "Var"dır, eşyalı olmak "Evet"tir. İngilizcedeki tek "Yes/No" bu ayrımı
   gizler; kaçırılırsa ilan detayında "Asansör: Evet" yazar.
-- **Metrik alan etiketleri yok.** `LISTING_FIELD_LABEL` yalnız "Metrikler" diyor;
+- **Metrik alan etiketleri — KAPANDI: `LISTING_METRIC_LABEL` eklendi**, sahibi
+  `ListingReviewPanel`'in metrik bloğu. Faz 2 teşhisi: `LISTING_FIELD_LABEL` yalnız "Metrikler" diyordu;
   `viewCount`/`favoriteCount`/`messageCount`/`reportCount` etiketsiz. Brifing 2.5
   metrikleri gösterilecek veri sayıyor ama 3.4'te **sahibi bir composite yok** —
   ListingFacts bilerek almadı (işi "kategoriye göre alanları göstermek"). Sahibi
@@ -794,8 +962,10 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   dışarıdan verilemiyor, kart brifing 2.2'nin genel metnini gömmek zorunda kaldı.
   Filtre sonucu boşluğunda "filtreleri temizle" gerekirse
   `DataTableProps.emptyState` ile simetrik bir `emptyState?: ReactNode` lazım.
-- **`RolePermissionMatrixProps.baseline`** — `diff` varyantı "değişen hücreler"
-  göstermek zorunda ama sözleşme **neye göre** değiştiğini söylemiyor. Şimdilik
+- **`RolePermissionMatrixProps.baseline` — KAPANDI: eklendi** (varsayılan
+  `ROLE_PERMISSIONS`; `SettingsPage` kayıtlı hâli veriyor). Faz 2'nin teşhisi
+  aynen doğruydu: `diff` varyantı "değişen hücreler" göstermek zorunda ama
+  sözleşme **neye göre** değiştiğini söylemiyordu. Şimdilik
   taban `ROLE_PERMISSIONS` varsayıldı (JSDoc'ta ve story'lerde açıkça yazılı) ve
   bu varsayım yalnızca kayıtlı izinler domain sabitiyle aynı kaldığı sürece doğru:
   superAdmin bir izni değiştirip **kaydettiği an** backend'in gerçeği sabitten
@@ -803,8 +973,9 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   başlar — diff sessizce yalan söyler. Backend gelince kesinlikle olacak.
   `baseline?: Record<AdminRole, readonly AdminPermission[]>`: verilirse ondan,
   verilmezse `ROLE_PERMISSIONS`'tan okumak geriye dönük uyumlu bir düzeltme.
-- **`StatCardProps.sparkline`** — `variant` JSDoc'u `trend` için "mini bir eğri
-  için yer açar" diyor ama eğrinin verisini taşıyan alan yok. StatCard yer
+- **`StatCardProps.sparkline` — KAPANDI: eklenmedi, JSDoc düzeltildi.** (Aşağıdaki
+  Faz 2 gerekçesi tarih olarak duruyor.) `variant` JSDoc'u `trend` için "mini bir
+  eğri için yer açar" diyordu ama eğrinin verisini taşıyan alan yok. StatCard yer
   **ayırmıyor**: veri kanalı olmayan bir şey için boşluk ayırmak her kartta kalıcı
   bir delik demek. `TimeSeriesPoint` domain'de zaten var ve `fixtures/dashboard.ts`
   iki seriyi (`dailyNewListings`, `dailyModerationCount`) tam o biçimde veriyor —
@@ -826,15 +997,17 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   **sayılabilir** bir sözleşmeye dönmeli _ve_ bir DropdownMenu primitive'i
   eklenmeli (repoda Select/MultiSelect var, menü yok); biri olmadan öteki işe
   yaramaz.
-- **`UserSummaryCardProps` yaptırım kaydını göremiyor.** Yalnız
-  `user: UserAccount` alıyor: `status` yaptırımın **olduğunu** söylüyor ama
+- **`UserSummaryCardProps` yaptırım kaydını göremiyordu — KAPANDI:
+  `activeSanction?: UserSanction` eklendi ve varyanta göre alan açıyor.** Faz 2
+  teşhisi: yalnız `user: UserAccount` alıyordu, `status` yaptırımın **olduğunu** söylüyor ama
   `UserSanction` (gerekçe, `startsAt`, `endsAt`, `revokedAt`) sözleşmede yok.
   Brifing 2.6 "aktif yaptırım"ı gösterilecek veri sayıyor ve `fixtures/users.ts`
   `activeSuspensionSanction`'ı `endsAt` ile yazdı — "askı 29 Tem'de bitiyor"
   yaptırım kararı verirken tam olarak bakılan bilgi. Kart bugün yaptırımın
   **tipini** durumdan türetiyor, "neden" ve "ne zamana kadar"ı susarak geçiyor
   (uydurmaktansa doğrusu bu). Önerilen: `activeSanction?: UserSanction`.
-- **`SellerPanelProps`: `activeListingCount?` ve `sanctions?`.** Panel
+- **`SellerPanelProps`: `activeListingCount?` ve `sanctions?` — KAPANDI, ikisi de
+  eklendi ve bağlandı.** Faz 2 teşhisi: panel
   `user.activeListingCount`'u okumuyor (süzülmüş prop ile hesabın toplamı yan yana
   çelişkili çıkardı), dolayısıyla "yayında kaç ilanı var" — brifing 2.6'nın görünen
   verisi — bu panelde cevapsız; `listingCount`/`openReportCount` ile aynı bağlamdan
@@ -842,7 +1015,9 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   geçmişi"ni gösteremiyor: `UserStatus`'ten yalnız **yürürlükteki** yaptırımın tipi
   türetilebiliyor, gerekçe ve kaldırılmış geçmiş yaptırımlar görünmüyor.
   `allUserSanctionFixtures` hazır bekliyor.
-- **`ReportCardProps`: üç boşluk.** (1) `now?: ISODateTime` — `variant` JSDoc'u
+- **`ReportCardProps`: üç boşluk — KAPANDI, dört prop eklendi ve bağlandı**
+  (`now`, `reporter`, `assignedAdmin`, `relatedReportCount`). **Dikkat: aşağıda
+  önerilen `AdminUser` tipi YOK** — admin de `UserAccount`'tur. Faz 2 teşhisi: (1) `now?: ISODateTime` — `variant` JSDoc'u
   "queue: şiddet ve **bekleme süresi** öne çıkar" diyor ama yaş hesabı "şimdi"yi
   gerektiriyor ve component saati kendi okuyamaz (göreli zaman tuzağı); kart şu an
   açılış anını mutlak tarih olarak gösteriyor. (2) **Ad çözümleme** — brifing 2.8
@@ -853,10 +1028,11 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   "benzer şikayet sayısı" verisi sözleşmede hiç yok; `kadikoyApartmentReports`'un
   üç şikayeti bunu kart üzerinde gösteremiyor, yalnız yan yana üç kart olarak
   (`SameListingReports`) görünüyor.
-- **`ListingFactsProps.headingLevel`** — `sections` varyantı bölüm başlıklarını
-  `<h3>` basıyor; panel bir detay sayfasının içinde yaşadığı için bu bir
-  **varsayım**. Sayfa katmanı gelince `headingLevel?: 2 | 3 | 4` gerekebilir
-  (kodda yorumla işaretli).
+- **`ListingFactsProps.headingLevel` — KAPANDI: gerekmiyor, varsayım doğrulandı.**
+  Tek tüketici (`ListingReviewPanel`) bölümlerini `<h2>` ile açıyor, sayfanın
+  `<h1>`'i PageHeader'ın (Faz 4): zincir h1 → h2 → h3, `heading-order` temiz.
+  Prop eklenmedi — tüketicisi olmayan kanal açmak `sparkline`'da reddedilen
+  hatanın aynısı olurdu. Başka bir yuvalama gerekirse geriye dönük uyumlu bir ek.
 
 ### `types/domain.ts` (dikkat: fiilen FastAPI'nin şartnamesi)
 
@@ -878,7 +1054,10 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   `readOnly`'de yalnız tarihi gösteriyor. Admin adı da istenecekse
   `updatedBy: UUID` (veya `AdminSummary`) eklenmeli — **backend sözleşmesi olduğu
   için bilerek dokunulmadı.**
-- **"Kesin konumu görme" izni yok** (aday, karar bekliyor).
+- **"Kesin konumu görme" izni — KAPANDI: GEREKMİYOR.** Brifing 1.4'te "İlan
+  görüntüleme" dört rolde de "Tam" ve `showExactLocation` brifing 1.1'de (satır 183) **son kullanıcının** sorusu diye tanımlı; ayrı izin matrisi kod üzerinden
+  değiştirmek olurdu. Gösterim kapısı `ListingReviewPanelProps.revealExactLocation`
+  ile sayfa katmanında. Faz 2 notu tarih olarak duruyor:
   `LocationPanelProps.revealExactLocation` bir **gösterim** kapısıdır, yetki kapısı
   değil — kimin açabileceğine sayfa katmanı karar veriyor (prop JSDoc'u ve
   story'nin `doNotUseWhen`'i böyle diyor). Ama `AdminPermission`'da karşılığı yok.
@@ -936,16 +1115,188 @@ işaretli). Kalanlar bilerek açık: ekranlar yazılırken karara bağlanacak,
   edemiyor (discriminated union gerekirdi); davranış JSDoc'ta ve
   `DrawerNeedsAHandler` ölçüyor.
 
+## Faz 3'ün açtığı kayıt: düzeltilen component kusurları
+
+Hepsi **Faz 1/2'de yazılmış**, hepsi testler geçerken bozuktu, hepsini ekranlar
+yazılırken bir tüketici buldu. Sözleşmeyi bir kez daha doğrulayan şey bu: **kusuru
+gösteren şey ikinci tüketicidir.**
+
+- **`UserSummaryCard` `adminRole`'ü sızdırıyordu** — rozet **varyanttan bağımsız**
+  basılıyordu, yani `detailed` (destek'in gördüğü yüz) admin rolünü gösteriyordu.
+  Kartın kendi `variant` JSDoc'u ve `AdminPermission.UserViewProfile` onu açıkça
+  gizli sayarken. `lastLoginAt` doğru kapılıydı, bu değildi — sızıntı tam olarak
+  "alanı listeye yazıp kapıyı kurmayı unutmak" biçimindeydi. Ölçen:
+  `UserManagementPage`. Regresyon: `AdminRoleIsHiddenInLimitedView`.
+- **`UserSummaryCard`'ın `security`'si `detailed`'ın üst kümesi DEĞİLDİ** — kart
+  e-posta/telefon/ilan sayaçları/kayıt tarihini `detailed`'da çiziyor,
+  `security`'de çizmiyordu: yani **moderatör ile süper admin kullanıcının
+  e-postasını göremiyor, destek görüyordu.** Yetki modelinin tersi. Kademe artık
+  gerçekten kademeli: compact ⊂ detailed ⊂ security. Ölçen: `UserDetailPage`.
+- **`RolePermissionMatrix`** — 320 pikselde sayfayı taşırıyordu (iki sebep,
+  yukarıda); `diff` çubuğunun metni `baseline` eklendikten sonra yalan söylüyordu.
+- **`Tabs.root`** — kolon izi bildirilmemişti; her `Tabs` tüketicisini etkiliyordu
+  ve component'in kendi "sekmeler kaydırılır" sözünü deliyordu.
+- **`FieldShell.description`** — Base UI `Field.Description` bir `<p>` basıyor ve
+  tarayıcının `1em` (16 piksel) margin'iyle geliyordu; `root`'un `gap`'i
+  `space[1]` (4 piksel), yani **dikey ritmi token değil tarayıcı belirliyordu,
+  dört katı**. Dokuz component'in altyapısı olduğu için sızıntı dokuz yere
+  gidiyordu. Reset tuzağının birebir tekrarı.
+- **`FieldShell.root` / `FilterBar.rangeInputs`** — grid izi (yukarıda).
+- **`DataTable`'ın `loading` + `selectable` dalı boş `<th>` basıyordu** →
+  axe `empty-table-header`. Yüklü dal hücreyi `hideLabel`'lı Checkbox ile
+  dolduruyor, yükleme dalı boş bırakıyordu; a11y kapısı `'error'` olduğu için
+  seçilebilir bir tabloyu yüklerken gösteren her story düşüyordu.
+
+### Hâlâ açık — ölçüldü, düzeltilmedi (dosya sahipliği / kapsam)
+
+- **`ListingCard`: odak halkası kırpılıyor.** Faz 2 bunu "muhtemel bir hata,
+  ekran görüntüsüyle doğrulanmalı" diye bırakmıştı — **doğrulandı**: `card`
+  recipe'i `overflow: hidden` + `clickRegion` kabı kaplayan bir `<button>`;
+  global `:focus-visible` outline'ı `outlineOffset: 0.125rem` ile dışarı taşıyor
+  ve ata onu yutuyor. `ApprovalQueue`'da ölçüldü.
+- **`ListingCard.actions` tıklanabilir `<button>`'ın İÇİNDE render ediliyor** →
+  iç içe etkileşimli element (geçersiz HTML + axe `nested-interactive`). JSDoc'u
+  "actions'a tıklamak onClick'i tetiklemez" diyor ama oraya buton koymak kartı
+  kırıyor. `ApprovalQueue` slot'a yalnız rozet koydu, butonları kartın kardeşi
+  yaptı.
+- **`ListingCard` 320 pikselde `detailed`**: `media` 176 piksel sabit, `body`'nin
+  `clientWidth`'i **32**, `scrollWidth`'i 277 — içerik kartın `overflow: hidden`'ıyla
+  kırpılıyor. Kırpıldığı için köke taşma olarak yansımıyor, yani **hiçbir test
+  görmüyor**.
+- **`UserSummaryCard` `<button>` olurken içine akış içeriği koyuyor** (`<dl>`,
+  `<p>`): buton içine akış içeriği geçersiz HTML. AGENTS'ın "kart `<button>`
+  olabiliyorsa bütün çocukları phrasing content" maddesi StatCard/ReportCard/
+  ListingCard'ı sayıyor ama **UserSummaryCard'ı atlamış** — ve reset maddesi onu
+  `<dl>` kullanıcısı diye anıyor: iki kural bu dosyada çarpışıyor.
+- **`DataTable.mobileMode` viewport'a bakmıyor.** JSDoc'u "dar ekranda ne olacağı"
+  diyor ama dal koşulsuz; `mobileMode="cards"` 1440'ta da kart çiziyor. Üç ekran
+  bağımsız olarak buna çarptı ve ikisi çift render + medya sorgusuyla çözdü
+  (çift DOM bedeli), `AuditLogPage` `scroll` seçtiği için kaçtı. Kalıcı çözüm
+  `css.cards`'a medya sorgusu.
+- **`DataTable.onRowClick` yalnız fare** — `<tr onClick>`, rol/tabIndex/tuş
+  dinleyicisi yok. Satır açmayı ona bağlayan tablo klavyeye ölü olur; üç ekran da
+  bunun yerine hücre içinde gerçek `<button>` kullandı.
+- **`DataTable.rowLabel` yalnız `selectable` iken okunuyor** — seçimsiz tabloda
+  ölü prop.
+- **`RadioGroup`: `label` verilince her seçenek grubun adını devralıyor** — üç
+  tema da "Kendi temam" diye okunuyor. Zincir: `FieldShell`→`Field.Root` bir
+  `LabelableProvider` açıyor, `Field.Label` id'sini oraya yazıyor; ne `RadioGroup`
+  ne `Radio` kendi labelable kapsamını açıyor (Base UI `Field.Item` bekliyor), o
+  yüzden `useAriaLabelledBy`'nin `explicit ?? labelId ?? fallback`'i grubun
+  id'sini sarmalayan `<label>`'ın önüne geçiriyor. **axe yakalamaz** — ad _eksik_
+  değil, _yanlış_. `RadioGroup.stories.tsx`'te **hiç play testi yok** ve
+  `SettingsPage` primitive'in ilk gerçek tüketicisi.
+- **`InputProps` "mesajsız geçersiz"i ifade edemiyor**: `data-invalid` yalnız
+  dolu bir `error`'dan doğuyor ve `error` aynı zamanda metni basıyor. Sonuç:
+  **giriş hatasında alanlar kırmızı kenarlık almıyor** (`AuthScreen`). Gereken:
+  `error`'dan bağımsız `invalid?: boolean`.
+- **`EmptyState`/`ErrorState` başlığı `<p>` basıyor** — tam sayfa bir ekran
+  (`AuthScreen`) onları kullanamıyor, çünkü sayfanın `<h1>`'i olmalı. Brifing
+  2.11 ikisini de türetiyor. `ListingFactsProps.headingLevel` ile aynı aile;
+  fark şu ki burada **gerçek bir tüketici** var.
+- **`ErrorState`'in güvenli geri dönüş slotu yok** (brifing 2.1) — `AuditLogPage`
+  bağlantıyı kendi çiziyor ve bu yüzden ekran Router context'i gerektiriyor.
+- **`ImageGallery` → `BrokenImageShowsExplanation` kırılgan**: tam paralel yükte
+  (66 dosya) düşüyor, tek başına 21/21 geçiyor. Kırık görselin `onerror`'ı ile
+  `findByText` yarışıyor. Faz 3 öncesinden var, Faz 3 dokunmadı.
+- **`date-fns` bağımlılığı `src/`'te hiç kullanılmıyor** ve `optimizeDeps`'te de
+  yok. Ya benimsenmeli ya düşürülmeli.
+- **`ColumnDef.hideable` ölü bildirim** — `DataTable` ona hiç bakmıyor.
+
 ## Karar bekleyenler — UYDURMA, SOR
 
 **Chromatic** ücretsiz planla bu spesifikasyon **matematiksel olarak çalışmıyor**
-ve Faz 2 bitince tahminden kötüleşti: **ölçülen 912 story** × 3 tema × 2 viewport
-= **5.472 snapshot/build**, kota **5.000/ay** — yani tek bir build aylık kotayı
-tek başına aşıyor (Faz 3'ün 11 ekranı daha eklenecek). Org repo'su gündeme
+ve her fazda kötüleşiyor: Faz 2'de 912 story → 5.472 snapshot/build idi; **Faz 3
+sonunda ölçülen 1.257 story** × 3 tema × 2 viewport = **7.542 snapshot/build**,
+kota **5.000/ay** — yani tek bir build aylık kotanın **bir buçuk katı**. Org repo'su gündeme
 gelince tema×viewport matrisi daraltılmalı ya da ücretli plana geçilmeli.
 
 **Backend** en sona bırakıldı — bu yüzden `src/types/domain.ts` fiilen FastAPI'nin
 şartnamesidir. Oradaki tipleri değiştirirken bunu hatırla.
+
+### Faz 3'ün raporladığı kanal boşlukları — brifing istiyor, sözleşme veremiyor
+
+Ekranlar bunları **uydurmadı, raporladı** ve ilgili prop'un JSDoc'una dürüstçe
+yazdı. Sözleşme değişikliği gerektiriyorlar; Faz 4'ün ilk işi bunlara karar
+vermek olabilir. **En sivri olanlar üstte:**
+
+- **`DashboardMetrics` brifing 2.2'nin ÜÇ verisini hiç taşımıyor**: "en uzun
+  süredir bekleyen ilanlar", "son moderasyon işlemleri", "moderatör bazında işlem
+  hacmi". İzin listesi değil, **veri kanalının kendisi** yok. Ayrıca
+  `dailyModerationCount` ayrışmamış tek seri — brifingin istediği **onay/red
+  ayrımı** çizilemiyor. `domain.ts` = FastAPI şartnamesi, dokunulmadı.
+- **`ApprovalQueue` karar veremiyor**: `onApprove`/`onReject`/`onRequestChanges`
+  yok. Brifing 2.4 "hızlı onay/red/düzeltme"yi eylem sayıyor. **Bunun sonucu
+  olarak brifing 3.5'in zorunlu `Conflict` story'si bu ekranda MANTIKEN
+  yazılamaz**: çakışma _gönderilen bir karara_ verilen cevaptır, bu ekran karar
+  göndermiyor. İki tutarlı kapanış var — ya kuyruk karar vermez ve `Conflict`
+  ondan düşer (`ListingReviewPanel`'de zaten zorunlu ve kanalı var), ya karar
+  handler'ları **ve** `decisionError` birlikte eklenir. `decisionError`'ı tek
+  başına eklemek gönderilmemiş bir kararın reddini göstermek olurdu.
+- **`ReportManagementPageProps`'ta `availablePermissions` YOK** — oysa
+  `ListingListPageProps`/`UserManagementPageProps`/`UserDetailPageProps`'ta var.
+  Üstelik `onResolve`/`onDismiss`/`onEscalate` **zorunlu**, yani "bu kullanıcı
+  çözemez" handler'ı vermeyerek bile söylenemiyor: `report:triageLimited` olan
+  içerik denetçisi "Çöz" görüyor. Ekran yalnız **durum** kapısı kurabildi
+  (`status ∈ {open, inReview}`). `domain/reportActions.ts` de yok
+  (`moderationActions.ts`'in şikayet karşılığı).
+- **`SettingsPageProps`'ta `state: AsyncState` yok** → brifing 3.5'in zorunlu
+  `Loading` story'si yazılamıyor.
+- **Ad çözümleme paketi yok**: `ReportManagementPage` `Paginated<ListingReport>`
+  alıyor, kullanıcı paketi almıyor → `ReportCard`'ın Faz 3'te eklenen
+  `reporter`/`assignedAdmin`/`listing` prop'larının **üçü de beslenemiyor**, kart
+  UUID basıyor. Aynı sebeple `ReportFilterValues.assignedAdminId` için seçenek
+  kaynağı yok. Çözüm: `ListingReviewData`/`UserDetailData` gibi bir paket.
+- **`ReportManagementPageProps`'ta `now` yok** → `ReportCard.now` tam bu ekran
+  için eklendi ama tüketicisi onu veremiyor. Ekran `2026-07-16`'yı **koda
+  gömmeyi reddetti** (haklı: donmuş bir "bugün" her kartta kalıcı yanlış süre
+  yazar; kartın belgelenmiş yedeği olan mutlak tarih daha doğru).
+- **`UserDetailData` `UserSanction` taşımıyor** → `UserSummaryCardProps.activeSanction`
+  beslenemiyor; brifing 2.6'nın "aktif yaptırım"ı kullanıcı detayında hâlâ
+  cevapsız. `ListingReviewData` de taşımıyor → `SellerPanel`'in `risk` varyantına
+  yaptırım geçmişi verilemiyor.
+- **`CategoryAttributePageProps`'ta `validationErrors` besleyecek alan yok** —
+  `AttributeEditor.validationErrors` var ama ekran veri çekmediği için kendi de
+  üretemiyor; brifing 2.7'nin `validationError` durumu kurulamıyor. `publishPending`
+  ve `conflict` de kanalsız.
+- **`DashboardStatsProps.onRetry` alan bilmiyor** (`() => void`) →
+  `ChartCardProps.onRetry`'nin "yalnız o alanın sorgusunu tazeler" sözü bu ekranda
+  tutulamıyor: bir grafiğin retry'ı bütün dashboard'ı çeker.
+- **`UserDetailData.listings` `Paginated` ama `onPageChange` yok** → ikinci sayfa
+  istenemez.
+- **Sıralama kanalı hiçbir liste ekranında yok** (`onSortChange`) → hiçbir kolon
+  `sortable` verilmedi (ölü buton üretmemek için).
+- **`UserManagementPage`/`UserDetailPage`'de `banPending`/`roleChangePending`/
+  `roleChangeConflict` kanalı yok**; `onRoleChange`'de `expectedRevision` gibi bir
+  damga da yok → son yazan kazanır ve ekran fark etmez.
+- **`onSuspend`/`onBan` yaptırımın kendisini toplamıyor** (süre/gerekçe yok);
+  `onResolve`/`onDismiss` çözüm notunu toplamıyor — oysa brifing 2.8 "çözüm
+  notu"nu görünen veri sayıyor.
+- **`AuthScreenProps.error` `string`**, diğer ekranlar `UiError` — tutarsız; sonuç
+  olarak `fatalError`'da destek kodu gösterilemiyor (brifing 2.11 `ErrorState`
+  türetiyor). Düzen varyantı (`Centered card` / `Split brand panel`) için de prop
+  yok; ekran medya sorgusuyla çözdü (64rem) ve gerekçesini yazdı.
+- **`ListingReviewPanel`**: benzer/mükerrer ilan önerileri, admin notları, revizyon
+  **geçmişi** (yalnız tek adım `previousRevision` var), önceki/sonraki kuyruk
+  ilanı, fotoğraf bazlı moderasyon (`onPhotoApprove`/`onPhotoReject`),
+  `ImageGallery`'de `error` kanalı, `highlightedFields`i besleyen "maddi
+  değişiklik" fonksiyonu — hiçbirinin kanalı yok. (`ListingFacts`'in `@example`'ı
+  var olmayan bir `maddiDegisiklikler()` çağırıyor.)
+- **`AuditLogPage`**: dışa aktarma kanalı yok; `AuditLogFilters`'ta aktör/eylem
+  filtresi yok (`query` yaklaşık tutuyor).
+- **`ListingListPage`**: il/ilçe/mahalle ve "inceleyen moderatör" filtrelerinin
+  **seçenek kaynağı** yok; alt kategori, güncellenme tarihi aralığı, kayıtlı
+  görünüm, kolon seçimi, `pageSize`, satır başına eylemler, `mutationPending`
+  kanalsız.
+- **`fixtures/categories.ts` yok** → `CategoryAttributePage`, `CategoryTree` ve
+  `AttributeEditor` üçü de story-yerel ağaç kuruyor. `fixtures/users.ts`'te
+  **`revokedAt` dolu yaptırım kaydı yok** → `SellerPanel.sanctions`'ın merkezî
+  sözü ("kaldırılmış yaptırım da sicildir") gerçek fixture'la ölçülemiyor.
+  `allUserSanctionFixtures` bir satıcının sicili olarak kullanılamıyor: iki
+  yaptırım **iki ayrı hesaba** ait.
+- **`FilterValue → tipli filtre` daraltması** (`nesneMi`/`tarihAraligiOku`) her
+  liste ekranında yeniden yazıldı — FilterBar iç yardımcılarını export etmiyor.
+  Paylaşılan util adayı.
 
 ## Git
 
