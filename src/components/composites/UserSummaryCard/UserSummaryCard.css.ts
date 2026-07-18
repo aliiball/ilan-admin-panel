@@ -203,6 +203,19 @@ export const factValue = style({
 })
 
 /**
+ * Yaptırım kaydının alanları — `facts` ile **aynı** ızgara, yalnız içeri alınmış.
+ *
+ * Kopyalanmıyor, besteleniyor: iki blok da ad–değer çifti ve ikisinin dikey ritmi
+ * ayrışırsa `security`'de yan yana iki farklı ızgara görünürdü.
+ *
+ * İçeri alma gerekli, çünkü `security`'de bu blok hesap alanlarının (Son giriş,
+ * Şikayet) **hemen üstünde** duruyor ve ikisi birebir aynı görünüyor: girinti
+ * olmadan "Gerekçe" hesabın bir alanı sanılır, oysa yaptırımın alanı — üstündeki
+ * banda ait. Ayıran şey token'lı bir boşluk, ham piksel değil.
+ */
+export const sanctionFacts = style([facts, { paddingInlineStart: vars.space[3] }])
+
+/**
  * Yürürlükteki yaptırım bandı.
  *
  * `<p>`'nin kendi margin'i sıfırlanıyor — grid `gap`'inin üstüne binerdi.

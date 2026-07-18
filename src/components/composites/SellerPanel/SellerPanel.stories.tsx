@@ -1,10 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, within } from 'storybook/test'
-import type { UserAccount } from '../../../types/domain'
+import type { UserAccount, UserSanction } from '../../../types/domain'
 import {
   activeIndividualOwner,
+  activeSuspensionSanction,
   bannedIndividual,
   pendingVerificationOffice,
+  permanentBanSanction,
   suspendedIndividual,
   userByStatus,
   verifiedConstructionCompany,
@@ -28,6 +30,40 @@ const UZUN_ICERIKLI_HESAP: UserAccount = {
     'Karadeniz Bölgesi Gayrimenkul Danışmanlığı ve Yatırım Hizmetleri A.Ş. — Trabzon Merkez Şubesi',
   email: 'kurumsal.musteri.iliskileri.yonetimi@karadenizgayrimenkulyatirim.example.invalid',
 }
+
+/**
+ * Mert Yıldız'ın **kaldırılmış** önceki askısı — fixture'dan türetiliyor.
+ *
+ * `fixtures/users.ts`'te `revokedAt` dolu **hiçbir** kayıt yok: iki yaptırımın
+ * ikisi de yürürlükte ve ayrı hesaplara ait (`allUserSanctionFixtures` bu yüzden
+ * tek bir satıcının sicili olarak kullanılamıyor — biri Mert'in askısı, öteki
+ * Kemal'in banı). Oysa sözleşme "kaldırılmış yaptırım da sicildir, listeden
+ * düşürülmez" diyor ve bu söz, kaldırılmış bir kaydın göründüğü bir story
+ * olmadan **ölçülemez**.
+ *
+ * `UZUN_ICERIKLI_HESAP` ile aynı kalıp: kayıt sıfırdan uydurulmuyor, gerçek
+ * yaptırımdan türetiliyor — `userId` korunuyor, tarihleri yürürlükteki askıdan
+ * önce ve `revokedAt` bitişinden önce (yani süresi dolmadan kaldırılmış).
+ * Kalıcı çözüm fixture'a bir `revokedSuspensionSanction` eklemek; bu ajan
+ * `fixtures/*`'a yazmıyor, raporlandı.
+ */
+const KALDIRILMIS_ASKI: UserSanction = {
+  ...activeSuspensionSanction,
+  id: 'sanction-suspension-mert-yildiz-onceki',
+  reason: 'İlan açıklamasında harici iletişim bilgisi paylaşımı.',
+  startsAt: '2026-04-02T09:15:00+03:00',
+  endsAt: '2026-04-09T09:15:00+03:00',
+  createdAt: '2026-04-02T09:15:00+03:00',
+  revokedAt: '2026-04-05T14:40:00+03:00',
+}
+
+/**
+ * Mert Yıldız'ın sicili: yürürlükteki askı **önce**, kaldırılmış olan sonra.
+ *
+ * Sıralama çağıranın kararı — panel sırayı bozmaz. En yeni kayıt başta, çünkü
+ * yaptırım kararı verirken önce son duruma bakılır.
+ */
+const MERT_SICILI: UserSanction[] = [activeSuspensionSanction, KALDIRILMIS_ASKI]
 
 /** Panelin kendi uydurmadığı, dışarıdan gelen eylemler. */
 const EYLEMLER = (
@@ -56,7 +92,11 @@ const meta = {
           "hesap `user`'dan, sayılar kendi proplarından gelir. **Sayıların kaynağı proplardır**: " +
           '`user.listingCount`/`reportCount` bir toplamdır, prop ise bağlama göre süzülmüş ve yalnız ' +
           '**açık** şikayetleri sayan sayıdır — ikisini karıştırmak paneli kendi içinde çelişkiye ' +
-          'düşürürdü, bu yüzden hesabın sayaçları hiç okunmaz. **Risk bir hüküm değil sinyaldir**: ' +
+          'düşürürdü, bu yüzden hesabın sayaçları hiç okunmaz. Aynı sebeple `activeListingCount` ' +
+          "verilmezse yalnız toplam yazılır: panel `user.activeListingCount`'a **düşmez**. " +
+          "**Yaptırım geçmişi yalnız `risk`'te**: `sanctions` verildiği sırada listelenir, " +
+          'kaldırılmış kayıt "Kaldırıldı" diye işaretlenir ama listeden düşürülmez — kaldırılmış ' +
+          'yaptırım da sicildir. **Risk bir hüküm değil sinyaldir**: ' +
           '`risk` varyantı puan hesaplamaz, "şüpheli satıcı" demez; açık şikayeti, doğrulamayı, kayıt ' +
           'tarihini ve yaptırımı yan yana koyar, hükmü moderatöre bırakır. Hesap yaşı hesaplanmaz — ' +
           'göreli zaman determinizmi bozar, kayıt tarihi mutlak yazılır. Yetki panelin işi değil: ' +
@@ -88,15 +128,20 @@ const meta = {
   },
 
   /*
-    `actions` meta.args'ta YOK: yokluğu bir durum (eylemsiz panel) ve meta'ya
-    konması prop'u bu dosyada zorunlu kılardı (exactOptionalPropertyTypes).
-    İhtiyacı olan story kendi veriyor.
+    `actions`, `activeListingCount` ve `sanctions` meta.args'ta YOK: üçünün de
+    yokluğu bir durum (eylemsiz panel, "aktif sayı verilmedi", "sicil
+    getirilmedi") ve meta'ya konması prop'u bu dosyada geri alınamaz kılardı —
+    `StoryObj<typeof meta>` meta.args'ın çıkarılan tipini prop tipiyle
+    kesiştiriyor, dolayısıyla "bu prop yok" demek isteyen story `undefined`
+    yazamıyor (TS2375). İhtiyacı olan story kendi veriyor.
   */
   argTypes: {
     variant: { control: 'inline-radio', options: VARYANTLAR },
     user: { control: false },
     actions: { control: false },
+    sanctions: { control: false },
     listingCount: { control: { type: 'number', min: 0 } },
+    activeListingCount: { control: { type: 'number', min: 0 } },
     openReportCount: { control: { type: 'number', min: 0 } },
   },
 } satisfies Meta<typeof SellerPanel>
@@ -206,6 +251,217 @@ export const NoOpenReports: Story = {
  */
 export const ContextuallyFilteredCounts: Story = {
   args: { variant: 'risk', user: verifiedRealEstateOffice, listingCount: 2, openReportCount: 1 },
+}
+
+/**
+ * Toplam ve yayındaki ilan sayısı yan yana: `6 ilan · 4 yayında` (brifing 2.6).
+ *
+ * İkisi de **aynı bağlamdan** gelmeli — "bu kategoride 6 ilan, 4'ü yayında".
+ * Toplamı süzülmüş, aktifi hesabın süzülmemiş sayacından almak "2 ilan · 6
+ * yayında" gibi okunamaz bir cümle üretirdi; prop JSDoc'u bu yüzden ikisini de
+ * çağırana bırakıyor.
+ */
+export const WithActiveListingCount: Story = {
+  args: {
+    variant: 'detailed',
+    user: verifiedRealEstateOffice,
+    listingCount: 6,
+    activeListingCount: 4,
+    openReportCount: 3,
+  },
+}
+
+/**
+ * Aktif sayı **proptan** okunmalı, `user.activeListingCount`'tan değil.
+ *
+ * Marmara Emlak'ın hesabı `activeListingCount: 1` diyor, prop 4 diyor. Panel
+ * hesabın sayacına düşseydi süzülmüş bağlamda yanlış sayı gösterir ve moderatör
+ * "bu kategoride biri yayında" diye okurdu. `CountsComeFromPropsNotFromAccount`'ın
+ * aktif sayı hâli.
+ */
+export const ActiveListingCountComesFromPropNotFromAccount: Story = {
+  args: {
+    variant: 'risk',
+    user: verifiedRealEstateOffice,
+    listingCount: 6,
+    activeListingCount: 4,
+    openReportCount: 3,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('6 ilan')).toBeInTheDocument()
+    await expect(canvas.getByText('4 yayında')).toBeInTheDocument()
+
+    /* Hesabın kendi sayacı: 1. Panel ona düşmemeli. */
+    await expect(canvas.queryByText('1 yayında')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Aktif sayı verilmezse panel yalnız toplamı gösterir — **uydurmaz**.
+ *
+ * Hesabın `activeListingCount: 1` sayacı burada da duruyor ve panel ona
+ * düşmüyor: yokluk bir durum, "yayında kaç ilanı var" sorusunu sayfa
+ * cevaplamadıysa panel de cevaplamaz.
+ */
+export const WithoutActiveListingCountOnlyTotalIsShown: Story = {
+  args: { variant: 'risk', user: verifiedRealEstateOffice, listingCount: 6, openReportCount: 3 },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('6 ilan')).toBeInTheDocument()
+    await expect(canvas.queryByText(/yayında/)).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Yaptırım geçmişi: yürürlükteki askı ve kaldırılmış önceki askı **birlikte**.
+ *
+ * Kaldırılmış kayıt listeden düşmüyor, işaretleniyor — bir kez askıya alınıp
+ * affedilmiş hesap ile hiç yaptırım görmemiş hesap aynı şey değil ve risk sorusu
+ * tam da bunu soruyor.
+ *
+ * Panel hiçbir kayda "yürürlükte" demiyor: bunu bilmek `endsAt`'i "şimdi" ile
+ * karşılaştırmayı gerektirir ve panelde "şimdi" yok. Yürürlükteki yaptırımın
+ * **tipini** üstteki bant `user.status`'ten söylüyor — o sunucunun hükmü.
+ */
+export const SanctionHistory: Story = {
+  args: {
+    variant: 'risk',
+    user: suspendedIndividual,
+    listingCount: 3,
+    activeListingCount: 0,
+    openReportCount: 1,
+    sanctions: MERT_SICILI,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    const sicil = canvas.getByRole('list', { name: 'Yaptırım geçmişi' })
+    const kayitlar = within(sicil).getAllByRole('listitem')
+    await expect(kayitlar).toHaveLength(2)
+
+    /* İki kayıt da askı; kaldırılmış olan DÜŞÜRÜLMÜYOR, yalnız işaretleniyor. */
+    await expect(canvas.getAllByText('Askıya Alma')).toHaveLength(2)
+    await expect(canvas.getAllByText('Kaldırıldı')).toHaveLength(1)
+
+    /*
+      Sıra bozulmuyor: verildiği sırada. `toHaveTextContent` alt dize arıyor
+      (AGENTS.md), bu yüzden olumlu iddia olumsuzuyla birlikte — yürürlükteki
+      kaydın "Kaldırıldı" taşımadığı da ölçülüyor.
+    */
+    const [yururlukteki, kaldirilmis] = kayitlar
+
+    await expect(yururlukteki).toHaveTextContent(activeSuspensionSanction.reason)
+    await expect(yururlukteki).not.toHaveTextContent('Kaldırıldı')
+
+    await expect(kaldirilmis).toHaveTextContent(KALDIRILMIS_ASKI.reason)
+    await expect(kaldirilmis).toHaveTextContent('Kaldırıldı')
+  },
+}
+
+/**
+ * Süresiz ban sicilde: `endsAt` yok, "Süresiz" yazılır.
+ *
+ * Bitiş tarihinin yokluğu bir durum (`fixtures/users.ts`: "süresiz bilgisini
+ * `endsAt: undefined` ile değil, alanın yokluğuyla taşıyor"); alan boş
+ * bırakılsaydı "süresiz" ile "tarih gelmedi" aynı görünürdü.
+ */
+export const PermanentBanInHistory: Story = {
+  args: {
+    variant: 'risk',
+    user: bannedIndividual,
+    listingCount: 0,
+    activeListingCount: 0,
+    openReportCount: 2,
+    sanctions: [permanentBanSanction],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getAllByText('Ban')).toHaveLength(1)
+    await expect(canvas.getByText(permanentBanSanction.reason)).toBeInTheDocument()
+    await expect(canvas.queryAllByText('Kaldırıldı')).toHaveLength(0)
+  },
+}
+
+/**
+ * Sicil `summary`'de **hiç** görünmez — hesabın kendisi anlatılır, sicili değil.
+ *
+ * Yaptırımlar veriliyor ama panel onları DOM'a bile koymuyor: "gizlenmiş" değil,
+ * hiç yok.
+ */
+export const SummaryHidesSanctionHistory: Story = {
+  args: { variant: 'summary', user: suspendedIndividual, listingCount: 3, sanctions: MERT_SICILI },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryAllByText('Askıya Alma')).toHaveLength(0)
+    await expect(canvas.queryByText('Yaptırım geçmişi')).not.toBeInTheDocument()
+    await expect(canvas.queryByText(activeSuspensionSanction.reason)).not.toBeInTheDocument()
+
+    /* Hesabın durumu yine de yazılı — gizlenen sicil, durum değil. */
+    await expect(canvas.getByText('Askıya Alındı')).toBeInTheDocument()
+  },
+}
+
+/** Sicil `detailed`'da da görünmez: iletişim ve hesap geçmişi başka bir soru. */
+export const DetailedHidesSanctionHistory: Story = {
+  args: { variant: 'detailed', user: suspendedIndividual, listingCount: 3, sanctions: MERT_SICILI },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryAllByText('Askıya Alma')).toHaveLength(0)
+    await expect(canvas.queryByText('Yaptırım geçmişi')).not.toBeInTheDocument()
+    await expect(canvas.queryByText(activeSuspensionSanction.reason)).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Boş sicil bir cevaptır: "veri geldi, kayıt yok".
+ *
+ * `sanctions: []` ile `sanctions: undefined` ayrı durumlar — biri "sicili temiz",
+ * öteki "sicil getirilmedi". Boş bırakılsaydı ikisi aynı görünürdü;
+ * `openReportCount: 0`'ın "Açık şikayet yok" demesiyle aynı ilke.
+ */
+export const NoSanctionRecord: Story = {
+  args: {
+    variant: 'risk',
+    user: activeIndividualOwner,
+    listingCount: 4,
+    activeListingCount: 1,
+    openReportCount: 0,
+    sanctions: [],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('Yaptırım kaydı yok')).toBeInTheDocument()
+    await expect(canvas.queryByRole('list', { name: 'Yaptırım geçmişi' })).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * `sanctions` verilmezse panel sicil hakkında **hiçbir şey söylemez** — "kayıt
+ * yok" bile demez, çünkü o bir iddiadır ve panelin elinde onu söyleyecek bilgi
+ * yoktur.
+ *
+ * Yürürlükteki yaptırım bandı yine de duruyor: kaynağı `user.status`, yani
+ * sunucunun hükmü — sicile bağlı değil. İki kanalın bağımsızlığı burada
+ * ölçülüyor.
+ */
+export const SanctionHistoryIsSilentWhenNotProvided: Story = {
+  args: { variant: 'risk', user: suspendedIndividual, listingCount: 3, openReportCount: 1 },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryByText('Yaptırım geçmişi')).not.toBeInTheDocument()
+    await expect(canvas.queryByText('Yaptırım kaydı yok')).not.toBeInTheDocument()
+
+    /* Bant `sanctions`'a bağlı değil: durumdan geliyor. */
+    await expect(canvas.getByText(/Yürürlükte olan yaptırım: Askıya Alma/)).toBeInTheDocument()
+  },
 }
 
 /** Uzun kurum adı ve uzun e-posta: sarmalı, kesilmeli, paneli taşırmamalı. */
@@ -450,15 +706,24 @@ export const PanelIsANamedRegionWithoutAvatarInitials: Story = {
   },
 }
 
-/** Dar ekranda eylemler alt satıra iner; panel 320 pikselde yatay kaydırmamalı. */
+/**
+ * Dar ekranda eylemler alt satıra iner; panel 320 pikselde yatay kaydırmamalı.
+ *
+ * Sicil de burada: gerekçe cümlesi ve tarih aralığı 320 pikselde sarmalı
+ * (`overflowWrap: anywhere`), sayı satırı da (`6 ilan · 4 yayında`) kendi
+ * satırına inebilmeli. Kaldırılmış yaptırımı olan **aktif** bir hesap: yaptırım
+ * kaldırıldığı için durum `Aktif` ve bant çıkmıyor, ama sicil duruyor.
+ */
 export const Mobile: Story = {
   globals: { viewport: { value: 'mobile320' } },
   args: {
     variant: 'risk',
     user: UZUN_ICERIKLI_HESAP,
     listingCount: 6,
+    activeListingCount: 4,
     openReportCount: 3,
     actions: EYLEMLER,
+    sanctions: [KALDIRILMIS_ASKI],
   },
 }
 

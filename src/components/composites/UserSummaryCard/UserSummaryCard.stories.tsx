@@ -3,10 +3,12 @@ import { expect, fn, userEvent, within } from 'storybook/test'
 import type { UserAccount } from '../../../types/domain'
 import {
   activeIndividualOwner,
+  activeSuspensionSanction,
   allUserFixtures,
   bannedIndividual,
   moderatorUser,
   pendingVerificationOffice,
+  permanentBanSanction,
   suspendedIndividual,
   superAdminUser,
   userByStatus,
@@ -60,7 +62,10 @@ const meta = {
           "dört durumun dört ayrı tonu vardır. Tıklanabilir bölge bir `<button>`'dır ama `actions`'ı " +
           '**sarmaz**: iç içe buton geçersiz HTML olurdu ve "eyleme tıklamak kartı açmaz" garantisi ' +
           '`stopPropagation` ile değil bu yapıyla sağlanır. `onClick` yoksa kart tıklanabilir görünmez. ' +
-          "Yetki kartın işi değil — yetkisiz eylem `disabled` verilmez, `actions`'a hiç konmaz.",
+          "Yetki kartın işi değil — yetkisiz eylem `disabled` verilmez, `actions`'a hiç konmaz. " +
+          "**`activeSanction`'ın alanları varyanta göre açılır ve bu bir yetki sınırıdır**: `compact` " +
+          'hiç göstermez, `detailed` yalnız tipi ve `endsAt`i (`destek` rolünün gördüğü yüz), `security` ' +
+          "ayrıca `reason`, `startsAt` ve `createdByAdminId`i. Gizli alan soluk değil, **DOM'da hiç yok**.",
       },
     },
     ai: {
@@ -85,14 +90,18 @@ const meta = {
   },
 
   /*
-    `onClick` ve `actions` meta.args'ta YOK. İkisinin de yokluğu bir durum
-    (tıklanamayan, eylemsiz kart) ve meta'ya `fn()` konması prop'u bu dosyada
-    zorunlu kılıp `undefined` geçmeyi imkânsızlaştırırdı (exactOptionalPropertyTypes
-    + Mock, TS2375). İhtiyacı olan story kendi veriyor.
+    `onClick`, `actions` ve `activeSanction` meta.args'ta YOK. Üçünün de yokluğu
+    bir durum (tıklanamayan kart, eylemsiz kart, **yaptırımsız kullanıcı**) ve
+    meta.args'a konan her prop `StoryObj<typeof meta>` içinde geri alınamaz olur:
+    `StoryObj` meta.args'ın çıkarılan tipini prop tipiyle kesiştiriyor, dolayısıyla
+    `activeSanction: undefined` yazmak imkânsızlaşırdı (exactOptionalPropertyTypes,
+    TS2375). Kural handler'a özgü değil, her prop için geçerli — ihtiyacı olan
+    story kendi veriyor.
   */
   argTypes: {
     variant: { control: 'inline-radio', options: VARYANTLAR },
     user: { control: false },
+    activeSanction: { control: false },
     actions: { control: false },
   },
 } satisfies Meta<typeof UserSummaryCard>
@@ -373,12 +382,19 @@ export const DetailedShowsBothVerificationStates: Story = {
  *
  * `adminRole` platform kullanıcılarında hiç dolu değil; rozeti oraya sızdırmak
  * "bu kullanıcı yönetici mi?" sorusunu yanlış cevaplardı.
+ *
+ * **Varyant Faz 3'te `detailed`'dan `security`'ye çevrildi.** Bu story'nin ölçtüğü
+ * eksen "admin hesabı mı, platform kullanıcısı mı" — varyant değil; `detailed`
+ * tesadüfen seçilmişti. Rozete ikinci bir kapı (yalnız `security`) eklenince
+ * story kendi eksenini ölçemez oldu: `detailed`'da rozet hiçbir hesapta
+ * görünmediği için iddia sebebini kaybediyordu. Varyant kapısını ölçen ayrı
+ * story aşağıda (`AdminRoleIsHiddenInLimitedView`) — iki eksen, iki story.
  */
 export const AdminRoleOnlyOnAdminAccounts: Story = {
   render: (args) => (
     <div style={{ display: 'grid', gap: '0.75rem' }}>
-      <UserSummaryCard {...args} user={moderatorUser} variant="detailed" />
-      <UserSummaryCard {...args} user={activeIndividualOwner} variant="detailed" />
+      <UserSummaryCard {...args} user={moderatorUser} variant="security" />
+      <UserSummaryCard {...args} user={activeIndividualOwner} variant="security" />
     </div>
   ),
   play: async ({ canvasElement }) => {
@@ -388,6 +404,37 @@ export const AdminRoleOnlyOnAdminAccounts: Story = {
     await expect(canvas.getByText('Yönetici')).toBeInTheDocument()
     await expect(canvas.getByText('Bireysel')).toBeInTheDocument()
     await expect(canvas.queryByText('Süper Admin')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Sınırlı görünüm (`detailed`) admin rolünü **hiç göstermemeli**; tam görünüm
+ * (`security`) göstermeli.
+ *
+ * Faz 3'te ölçülmeye başlandı çünkü Faz 3'te **gerçek bir kusurdu**: rozet
+ * varyanttan bağımsız basılıyordu, yani `destek`in gördüğü yüz olan `detailed`
+ * admin rolünü sızdırıyordu — `AdminPermission.UserViewProfile`'ın JSDoc'u onu
+ * açıkça gizli sayarken. `lastLoginAt` doğru kapılıydı, bu değildi; kapının
+ * unutulduğunu `UserManagementPage` yazılırken fark edildi.
+ *
+ * **İki iddia birlikte gerekiyor.** Tek başına "yok" iddiası, rozet hiçbir yerde
+ * çizilmese de geçerdi — kontrol grubu olmadan yokluk iddiası sebebini kanıtlamaz.
+ */
+export const AdminRoleIsHiddenInLimitedView: Story = {
+  render: (args) => (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      <UserSummaryCard {...args} user={moderatorUser} variant="detailed" />
+      <UserSummaryCard {...args} user={moderatorUser} variant="security" />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    /*
+      Aynı hesap iki varyantta çiziliyor, yani rozet ya 1 kez görünür (yalnız
+      security) ya 2 kez (kapı yok) ya 0 kez (hiç çizilmiyor). Sayı ölçümü üçünü
+      de ayırıyor; `queryByText`/`getByText` yalnız ilk ikisini ayırırdı.
+    */
+    const rozetler = within(canvasElement).getAllByText('Moderatör')
+    await expect(rozetler).toHaveLength(1)
   },
 }
 
@@ -409,6 +456,129 @@ export const SanctionIsSurfacedOnSecurity: Story = {
     await expect(canvas.getByText(/Yürürlükte olan yaptırım: Askıya Alma/)).toBeInTheDocument()
     await expect(canvas.getByText(/Yürürlükte olan yaptırım: Ban/)).toBeInTheDocument()
     await expect(canvas.getAllByText(/Yürürlükte olan yaptırım/)).toHaveLength(2)
+  },
+}
+
+/**
+ * Yaptırım kaydı verilmiş askıdaki hesap, `detailed` — **`destek` rolünün gördüğü
+ * yüz.** Kayıt gelince kart "Askıya Alındı" demekle kalmıyor, askının 29 Tem 2026
+ * 10:30'da bittiğini de söyleyebiliyor — müşteriye anlatılan cümle tam olarak bu.
+ *
+ * **İddia: `detailed` yaptırımın iç gerekçesini SIZDIRMAZ.**
+ *
+ * Bu kartın en sıkı iddiası ve bir yetki sınırı: `destek` rolü bu varyantı görür
+ * ve `UserSanction.reason` iç gerekçe metnidir — müşteriye okunacak cümle değil
+ * (`AdminPermission.UserViewProfile`'ın JSDoc'u onu, `startsAt`'i ve
+ * `createdByAdminId`'yi gizli sayıyor).
+ *
+ * Ölçüm **`not.toBeInTheDocument()`** ile, `toBeVisible()` ile değil: reponun en
+ * eski kuralı "yetkisi yoksa hiç render etme" ve gizli alanın soluk, `disabled`
+ * ya da `aria-hidden` bırakılması hiçbir şey çözmezdi — metin DOM'da durur,
+ * incelemede okunur. `queryByText` `aria-hidden` alt ağacını zaten dışlamaz;
+ * bu iddia ancak alan **hiç yokken** geçer.
+ *
+ * Görebildikleri de ölçülüyor: bandın kendisi ve `endsAt`. Yokluk iddiasını tek
+ * başına yazmak dişsizdir — kart hiç render edilmese de geçerdi.
+ */
+export const SupportViewHidesSanctionReason: Story = {
+  args: {
+    variant: 'detailed',
+    user: suspendedIndividual,
+    activeSanction: activeSuspensionSanction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    // Görmesi gerekenler: yaptırımın tipi ve ne zaman bittiği.
+    await expect(canvas.getByText(/Yürürlükte olan yaptırım: Askıya Alma/)).toBeInTheDocument()
+    await expect(canvas.getByText('Bitiş')).toBeInTheDocument()
+    await expect(canvas.getByText('29 Tem 2026 10:30')).toBeInTheDocument()
+
+    // Görmemesi gerekenler: gerekçe, başlangıç, kararı veren admin.
+    await expect(canvas.queryByText(/ısrarlı spam/i)).not.toBeInTheDocument()
+    await expect(canvas.queryByText('Gerekçe')).not.toBeInTheDocument()
+    await expect(canvas.queryByText('Başlangıç')).not.toBeInTheDocument()
+    await expect(canvas.queryByText('15 Tem 2026 10:30')).not.toBeInTheDocument()
+    await expect(canvas.queryByText('Karar veren')).not.toBeInTheDocument()
+    await expect(canvas.queryByText('admin-moderator-1')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Aynı kayıt, `security` — **tam görünüm**: sınırlı varyantın sakladığı üç alan
+ * (gerekçe, başlangıç, kararı veren admin) burada açık. `destek` bu varyantı
+ * görmez; varyantı seçen sayfa katmanı **önce `UserView`'u** sınamalı (kademeler
+ * kapsayıcı — ters sıra `superAdmin`'e daraltılmış görünüm gösterir).
+ *
+ * `SupportViewHidesSanctionReason`'ın ikizi. İkisi birlikte ölçmezse yokluk
+ * iddiası yalan söyleyebilirdi: alan **hiçbir** varyantta render edilmiyor olsa
+ * da o test geçerdi.
+ */
+export const SecurityViewShowsSanctionReason: Story = {
+  args: {
+    variant: 'security',
+    user: suspendedIndividual,
+    activeSanction: activeSuspensionSanction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText(/Yürürlükte olan yaptırım: Askıya Alma/)).toBeInTheDocument()
+    await expect(canvas.getByText(/ısrarlı spam/i)).toBeInTheDocument()
+    await expect(canvas.getByText('15 Tem 2026 10:30')).toBeInTheDocument()
+    await expect(canvas.getByText('admin-moderator-1')).toBeInTheDocument()
+
+    // `endsAt` sınırlı görünümde de vardı; burada da olmalı.
+    await expect(canvas.getByText('29 Tem 2026 10:30')).toBeInTheDocument()
+  },
+}
+
+/**
+ * Süresiz ban: `endsAt` **yok** ve bu bir durum, eksik veri değil — fixture'ın
+ * kendi JSDoc'u da "süresiz" bilgisini alanın yokluğuna yüklüyor.
+ *
+ * İddia: "Bitiş" satırı boş kalmamalı, "Süresiz" demeli. Boş bir satır "veri
+ * gelmedi" ile "bitmiyor"u karıştırırdı ve ikisi yaptırım kararında aynı şey
+ * değil. Başlangıç yine mutlak tarih — süresizlik "başlangıç da yok" demek değil.
+ */
+export const PermanentBanHasNoEndDate: Story = {
+  args: {
+    variant: 'security',
+    user: bannedIndividual,
+    activeSanction: permanentBanSanction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText(/Yürürlükte olan yaptırım: Ban/)).toBeInTheDocument()
+    await expect(canvas.getByText('Bitiş')).toBeInTheDocument()
+    await expect(canvas.getByText('Süresiz')).toBeInTheDocument()
+    await expect(canvas.getByText('26 Haz 2026 11:00')).toBeInTheDocument()
+  },
+}
+
+/**
+ * `compact` yaptırımı **hiç** göstermez — kayıt verilse bile.
+ *
+ * Liste satırında durum rozeti tek bilgi; bant satırı iki katına çıkarır ve
+ * gerekçe metni yoğun bir listede sızma yüzeyi olurdu. Rozetin kendisi pozitif
+ * kontrol: kart render edildiği hâlde yaptırım alanları yok.
+ */
+export const CompactWithholdsSanction: Story = {
+  args: {
+    variant: 'compact',
+    user: suspendedIndividual,
+    activeSanction: activeSuspensionSanction,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('Askıya Alındı')).toBeInTheDocument()
+
+    await expect(canvas.queryByText(/Yürürlükte olan yaptırım/)).not.toBeInTheDocument()
+    await expect(canvas.queryByText(/ısrarlı spam/i)).not.toBeInTheDocument()
+    await expect(canvas.queryByText('Bitiş')).not.toBeInTheDocument()
+    await expect(canvas.queryByText('29 Tem 2026 10:30')).not.toBeInTheDocument()
   },
 }
 

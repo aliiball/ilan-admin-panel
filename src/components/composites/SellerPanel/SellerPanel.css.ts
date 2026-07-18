@@ -236,6 +236,141 @@ export const sanction = style({
   fontWeight: vars.font.weight.medium,
 })
 
+/**
+ * Toplam ve yayındaki ilan sayısı yan yana: `6 ilan · 4 yayında`.
+ *
+ * İki sayı ayrı `<span>`'lerde, tek bir metinde birleştirilmiyor. Sebebi görsel
+ * değil ölçüm: `getByText` yalnız **doğrudan** metin çocuklarına bakıyor
+ * (AGENTS.md), yani birleştirilseydi `getByText('6 ilan')` — üç story'nin
+ * dayandığı iddia — aktif sayı verildiği anda sessizce düşerdi. Ayrı span'ler
+ * ikisini de tek tek sorgulanabilir bırakıyor, üstelik aktif sayının kendi rengi
+ * zaten ayrı bir element istiyordu.
+ */
+export const countLine = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'baseline',
+  gap: vars.space[2],
+})
+
+/**
+ * Ayırıcı nokta erişilebilirlik ağacından gizli: ekran okuyucu "orta nokta"
+ * demesin, iki span zaten arka arkaya okunuyor. Boşluğu `gap` veriyor — nokta
+ * metne yapıştırılsaydı sayının kendisiyle aynı text node'a girer ve yukarıdaki
+ * ölçülebilirliği bozardı.
+ */
+export const countSeparator = style({
+  color: vars.color.text.muted,
+})
+
+/**
+ * "4 yayında" — toplamın yanındaki ikincil sayı.
+ *
+ * `text.secondary`, `text.disabled` değil: bilgi taşıyan metin (AGENTS.md'de
+ * ölçülmüş kontrast ailesi — Tag'in disabled etiketi ve "Görsel yok" tam da bu
+ * yüzden `muted`'a taşınmıştı).
+ */
+export const countActive = style({
+  color: vars.color.text.secondary,
+})
+
+/**
+ * Yaptırım geçmişi bloğu: görünür etiket + kayıtların listesi.
+ *
+ * Etiket bir `<h*>` **değil**: panel başlık seviyesi tahmin etmiyor (sözleşmede
+ * `headingLevel` yok, gerekçe `.tsx`'te) ve `PanelIsANamedRegionWithoutAvatarInitials`
+ * panelde hiç başlık olmadığını ölçüyor. Liste adını `aria-labelledby` ile bu
+ * etiketten alıyor — landmark üretmeden.
+ */
+export const sanctionsGroup = style({
+  display: 'grid',
+  gap: vars.space[2],
+})
+
+export const sanctionsLabel = style({
+  fontSize: vars.font.size.sm,
+  color: vars.color.text.muted,
+})
+
+/**
+ * Sicil bir `<ol>`: kayıtların sırası anlamın kendisi ve sözleşme "sıra
+ * bozulmadan render edilir" diyor — `<ul>` bunu söylemez.
+ *
+ * Üç sıfırlama birden (`listStyle` + `margin` + `padding`): global reset yalnız
+ * body'nin margin'ine dokunuyor, `<ol>` ayrıca **40 piksellik**
+ * `padding-inline-start` taşıyor. Yalnız margin sıfırlansa liste sağa kayar
+ * (AGENTS.md, ModerationHistory'nin zaman çizgisiyle aynı reçete).
+ */
+export const sanctionList = style({
+  display: 'grid',
+  gap: vars.space[2],
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+})
+
+/**
+ * Tek bir yaptırım kaydı.
+ *
+ * Kaldırılmış kayıt soluk zemine alınıyor ama **listede kalıyor ve okunur
+ * kalıyor**: sözleşme "kaldırılmış yaptırım da sicildir" diyor. Zemin tek kanal
+ * değil — kaydın kendisi ayrıca "Kaldırıldı" rozeti taşıyor (durum yalnız renkle
+ * ifade edilmez).
+ *
+ * Yürürlükteki kayıt kırmızıya boyanmıyor: panel bir kaydın **şu an** geçerli
+ * olup olmadığını bilmiyor (bkz. `.tsx`'teki gerekçe — "şimdi" yok). Rengi
+ * kaydın tipi taşıyor, kabı değil.
+ */
+export const sanctionItem = recipe({
+  base: {
+    display: 'grid',
+    gap: vars.space[1],
+    padding: vars.space[3],
+    border: '1px solid',
+    borderColor: vars.color.border.subtle,
+    borderRadius: vars.radius.md,
+  },
+
+  variants: {
+    revoked: {
+      true: { background: vars.color.bg.subtle },
+      false: { background: vars.color.bg.surface },
+    },
+  },
+
+  defaultVariants: { revoked: false },
+})
+
+/** Kaydın rozetleri: tipi ve —varsa— kaldırılmış işareti. */
+export const sanctionItemBadges = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: vars.space[1],
+})
+
+/**
+ * İç gerekçe metni. `<p>`'nin kendi margin'i sıfırlanıyor — grid `gap`'inin
+ * üstüne binip dikey ritmi tarayıcıya bırakırdı.
+ */
+export const sanctionReason = style({
+  margin: 0,
+  fontSize: vars.font.size.sm,
+  color: vars.color.text.secondary,
+  lineHeight: vars.lineHeight.body,
+  /** Uzun gerekçe cümlesi sarsın; panel yatay kaydırmasın. */
+  overflowWrap: 'anywhere',
+})
+
+/** Kaydın tarihleri. `<p>` margin'i yine sıfır; sayılar hizada dursun diye tabular. */
+export const sanctionDates = style({
+  margin: 0,
+  fontSize: vars.font.size.sm,
+  color: vars.color.text.muted,
+  fontVariantNumeric: 'tabular-nums',
+  overflowWrap: 'anywhere',
+})
+
 /** "Hiç giriş yapmadı" — bir değer değil, değerin yokluğu. */
 export const missing = style({
   color: vars.color.text.muted,

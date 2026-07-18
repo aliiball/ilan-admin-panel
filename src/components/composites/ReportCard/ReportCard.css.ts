@@ -187,6 +187,14 @@ export const badges = style({
 /** Şikayet edilen ilanın özeti; ilan gelmediyse aynı kutuda kimlik görünür. */
 export const listingBox = style({
   display: 'flex',
+  /*
+    `relatedReportCount` rozeti geldiğinde kutuda üç sarmayan öğe olabiliyor
+    (görsel + "2 benzer şikayet daha" + durum rozeti) ve rozetler `nowrap`:
+    320 pikselde toplamları metin kolonu sıfıra insin diye kutuyu yatay
+    kaydırtırdı. Sarma yalnız gerçekten sığmadığında devreye giriyor — rozetsiz
+    kutunun düzeni değişmiyor.
+  */
+  flexWrap: 'wrap',
   alignItems: 'center',
   gap: vars.space[3],
   minWidth: 0,
@@ -227,6 +235,17 @@ export const thumb = recipe({
   },
 
   defaultVariants: { variant: 'compact' },
+})
+
+/**
+ * Benzer şikayet sayacı.
+ *
+ * `flexShrink: 0` şart: flex öğesinin varsayılanı `1` ve rozetin metni
+ * `white-space: nowrap` — daralan bir rozet metnini kendi kutusunun dışına
+ * taşırdı, yani küçülüyormuş gibi yapıp taşmayı gizlerdi.
+ */
+export const relatedBadge = style({
+  flexShrink: 0,
 })
 
 export const listingText = style({
@@ -294,10 +313,27 @@ export const assignee = style({
   overflowWrap: 'anywhere',
 })
 
-export const time = style({
-  color: vars.color.text.secondary,
-  fontVariantNumeric: 'tabular-nums',
-  whiteSpace: 'nowrap',
+export const time = recipe({
+  base: {
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  },
+
+  variants: {
+    tone: {
+      secondary: { color: vars.color.text.secondary },
+      /**
+       * `now` verilip bekleme süresi yazıldığında tarih ikinci plana düşer:
+       * öne çıkan şey süre. `text.muted` (6.15) bilgi taşıyan metin için hâlâ
+       * AA — `text.disabled` burada kullanılamaz, tarih devre dışı bir kontrol
+       * değil düpedüz bilgi (bkz. Tag'in disabled etiketi ve ListingCard'ın
+       * "Görsel yok" yer tutucusu).
+       */
+      muted: { color: vars.color.text.muted },
+    },
+  },
+
+  defaultVariants: { tone: 'secondary' },
 })
 
 /** Şikayetçinin kendi metni; uzun ve satır sonu barındırmayabilir. */

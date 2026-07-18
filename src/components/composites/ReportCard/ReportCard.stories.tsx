@@ -6,8 +6,10 @@ import { Button } from '../../primitives/Button'
 import {
   allReportFixtures,
   buildingArchivedMixedUse,
+  contentReviewerUser,
   kadikoyApartmentReports,
   landRejectedField,
+  moderatorUser,
   reportBySeverity,
   reportByStatus,
   reportDismissedArchivedBuilding,
@@ -17,11 +19,44 @@ import {
   reportOpenLowDuplicate,
   reportResolvedPhotoOwnership,
   residentialPublishedApartment,
+  superAdminUser,
   tourismRejectedPension,
+  verifiedConstructionCompany,
 } from '../../../fixtures'
 import { ReportCard } from './ReportCard'
 
 const VARYANTLAR = ['compact', 'detailed', 'queue'] as const
+
+/**
+ * Fixture dünyasının "bugün"ü: **2026-07-16**.
+ *
+ * `users.ts`'teki dört adminin `lastLoginAt`'i o sabah (07:50–09:02) ve
+ * `dashboard.ts`'in penceresi o gün bitiyor — 10:00 hepsinin bir saat sonrası,
+ * yani "herkes sabah giriş yaptı, kuyruğa bakılıyor" anı.
+ *
+ * **`new Date()` DEĞİL, bilerek.** Story saati kendi okusaydı `now` prop'unu
+ * ölçen her test dün "3 gündür", bugün "4 gündür" okurdu ve Chromatic her gün
+ * fark üretirdi — kartın kaçındığı tuzağın aynısını story kurmuş olurdu.
+ * Sabit değer, bu dosyadaki bütün süre iddialarının tek kaynağı.
+ */
+const SIMDI = '2026-07-16T10:00:00+03:00'
+
+/**
+ * Bekleme süresinin dört kademesi, hepsi `reportOpenCriticalFraud`'un açılış
+ * anına (2026-07-13 09:12) göre.
+ *
+ * Beklenen metinler elle yazılı ve **fonksiyonun formülünden türetilmiyor**:
+ * türetilseydi test kartı değil kendini ölçerdi (aynı hata iki yerde birden
+ * yapılınca sessizce geçerdi). Türkçe ek uyumu da burada donuyor — `gündür`,
+ * `saattir` ("saat" ince ünlü alan bir alıntı: "saati", "saatler"), `dakikadır`.
+ */
+const BEKLEME_ORNEKLERI = [
+  /** 30 saniye: bir dakikanın altında uydurulmuş bir sayı yazılmıyor. */
+  { now: '2026-07-13T09:12:30+03:00', beklenen: '1 dakikadan kısa süredir bekliyor' },
+  { now: '2026-07-13T09:37:00+03:00', beklenen: '25 dakikadır bekliyor' },
+  { now: '2026-07-13T14:12:00+03:00', beklenen: '5 saattir bekliyor' },
+  { now: SIMDI, beklenen: '3 gündür bekliyor' },
+] as const
 
 /**
  * Şikayetleri bağlı oldukları ilan fixture'ına eşler.
@@ -73,9 +108,10 @@ const meta = {
           'Bir şikayetin özeti. **Şiddet ve durum iki ayrı eksendir**: "kritik ama çözülmüş" ile ' +
           '"açık ama düşük şiddetli" farklı işlerdir, kart ikisini de ayrı kanallardan gösterir — ' +
           'şiddet sol şeritten ve kendi rozetinden, durum kendi rozetinden; sonuçlanmış şikayetin ' +
-          'zemini söner ama şeridi kalır. `listing` opsiyonel: gelmediyse veya ilan silindiyse kart ' +
-          'çökmez, `report.listingId`’yi gösterir. Göreli zaman yok — `queue` varyantı yaşı ' +
-          'değil açılış anını öne çıkarır, çünkü component saati kendi okuyamaz.',
+          'zemini söner ama şeridi kalır. `listing`, `reporter` ve `assignedAdmin` opsiyonel: ' +
+          'gelmediyse kart çökmez, elindeki kimliği gösterir — eksik bağlam, kırık başvuru değil. ' +
+          '`queue` varyantı bekleme süresini (“3 gündür bekliyor”) **yalnız `now` verilirse** ' +
+          'hesaplar; kart saati kendi okumaz, verilmezse açılış anını mutlak tarih olarak gösterir.',
       },
     },
     ai: {
@@ -95,10 +131,15 @@ const meta = {
   },
 
   /*
-    `listing`, `actions` ve `onClick` meta.args'ta BİLEREK yok: üçünün de
-    yokluğu ayrı bir durum (ilan gelmemiş kart, eylemsiz kart, tıklanamaz kart)
-    ve `exactOptionalPropertyTypes` açıkken meta'ya konan bir değer story'de
-    `undefined` ile geri alınamaz (TS2375). İhtiyacı olan story kendi versin.
+    Yedi prop meta.args'ta BİLEREK yok — `listing`, `reporter`, `assignedAdmin`,
+    `relatedReportCount`, `now`, `actions`, `onClick`. Yedisinin de **yokluğu
+    ayrı bir durum**: ilan gelmemiş kart, anonim/çözülmemiş ad, benzeri olmayan
+    şikayet, saati verilmemiş kuyruk, eylemsiz kart, tıklanamaz kart.
+    `exactOptionalPropertyTypes` açıkken `StoryObj<typeof meta>` meta.args'ın
+    çıkarılan tipini prop tipiyle kesiştiriyor, dolayısıyla meta'ya konan bir
+    değer story'de `undefined` ile geri alınamaz (TS2375) ve "bu prop yok" diyen
+    story yazılamaz. Kural handler'a özgü değil, tipe de bakmıyor. İhtiyacı olan
+    story kendi versin.
   */
   args: {
     report: reportOpenCriticalFraud,
@@ -109,6 +150,8 @@ const meta = {
     variant: { control: 'inline-radio', options: VARYANTLAR },
     report: { control: false },
     listing: { control: false },
+    reporter: { control: false },
+    assignedAdmin: { control: false },
     actions: { control: false },
   },
 
@@ -143,9 +186,47 @@ export const Detailed: Story = {
   },
 }
 
-/** Triage kuyruğu: şiddet ilk okunan şey, açılış anı ikinci. */
+/**
+ * Triage kuyruğu, `now` **verilmeden**: şiddet ilk okunan şey, açılış anı ikinci.
+ *
+ * Faz 2'nin davranışı; `now` opsiyonel olduğu için aynen duruyor.
+ */
 export const Queue: Story = {
   args: { variant: 'queue', listing: tourismRejectedPension },
+}
+
+/**
+ * Triage kuyruğu, `now` **verilerek**: manşet artık bekleme süresi, tarih onun
+ * arkasında sönük duruyor.
+ *
+ * Saat prop'tan geliyor — kart `new Date()` çağırmıyor, çağırsaydı bu story her
+ * gün başka bir sayı gösterirdi.
+ */
+export const QueueWithWaitingTime: Story = {
+  args: { variant: 'queue', listing: tourismRejectedPension, now: SIMDI },
+}
+
+/**
+ * Kuyrukta atanan admin de adıyla görünür.
+ *
+ * `admin-content-reviewer-1` diye bir dize kuyruğu tarayan moderatöre hiçbir şey
+ * söylemez; "Burak Şahin" söyler. Kartın kendisi çözemez (veri çekmiyor) — adı
+ * sayfa katmanı verir.
+ */
+export const QueueWithAssignedAdmin: Story = {
+  args: {
+    variant: 'queue',
+    report: reportInReviewFalseLicense,
+    listing: tourismRejectedPension,
+    assignedAdmin: contentReviewerUser,
+    now: SIMDI,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText(`Atanan: ${contentReviewerUser.fullName}`)).toBeInTheDocument()
+    await expect(canvas.getByText('2 gündür bekliyor')).toBeInTheDocument()
+  },
 }
 
 /** Tıklanabilir kart: bölge `<button>`, adı sebepten okunur. */
@@ -266,6 +347,56 @@ export const SameListingReports: Story = {
 }
 
 /**
+ * Aynı üç şikayet, bu kez `relatedReportCount` ile: her kart komşularını
+ * **sayı olarak** taşıyor.
+ *
+ * `SameListingReports`'tan farkı bütün mesele: orada bilgi yalnız üç kartı yan
+ * yana görmekten çıkıyor, burada kartın kendisinde yazıyor — kuyrukta kartlar
+ * yan yana gelmez, araya başka ilanların şikayetleri girer.
+ *
+ * Sayı `kadikoyApartmentReports.length - 1`'den **türetiliyor**, elle
+ * yazılmıyor: fixture'a dördüncü bir şikayet eklenirse story kendiliğinden 3
+ * der, sabit yazılsaydı sessizce yalan söylerdi.
+ */
+export const RelatedReports: Story = {
+  args: { variant: 'queue', now: SIMDI },
+  render: (args) => (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      {kadikoyApartmentReports.map((report) => (
+        <ReportCard
+          {...args}
+          key={report.id}
+          report={report}
+          listing={residentialPublishedApartment}
+          relatedReportCount={kadikoyApartmentReports.length - 1}
+        />
+      ))}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    /* Üç kartın üçü de 2 diyor: kart kendini saymıyor. */
+    await expect(canvas.getAllByText('2 benzer şikayet daha')).toHaveLength(3)
+    await expect(canvas.queryByText('3 benzer şikayet daha')).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * `relatedReportCount: 0` gösterilmez.
+ *
+ * "0 benzer şikayet daha" bir bilgi değil gürültüdür; sayacın yokluğu ile sıfırı
+ * aynı şeyi anlatır ve rozet yalnız söyleyecek bir şeyi olduğunda çıkar.
+ */
+export const NoRelatedReports: Story = {
+  args: { listing: tourismRejectedPension, relatedReportCount: 0 },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByText(/benzer şikayet daha$/)).not.toBeInTheDocument()
+  },
+}
+
+/**
  * Uzun açıklama, uzun çözüm notu ve uzun ilan başlığı: kart taşmamalı.
  *
  * Temeli `kritikCozulmus`, `reportOpenCriticalFraud` değil: çözüm notu
@@ -309,6 +440,24 @@ export const MobileDetailed: Story = {
     variant: 'detailed',
     report: reportResolvedPhotoOwnership,
     listing: residentialPublishedApartment,
+  },
+}
+
+/**
+ * 320 pikselde ilan kutusunda üç sarmayan öğe: görsel, benzer şikayet rozeti ve
+ * durum rozeti. Kutu sarar, kart yatay kaydırmaz.
+ *
+ * İddia ekran görüntüsünün işi, play'in değil: sarma medya sorgusuna değil kabın
+ * gerçek genişliğine bağlı ve repoda container query yok — dar bir decorator
+ * kabında play bunu ölçemez, viewport global'inin test tarayıcısına gerçekten
+ * uygulandığı da doğrulanmadı.
+ */
+export const MobileWithRelatedReports: Story = {
+  globals: { viewport: { value: 'mobile320' } },
+  args: {
+    report: reportResolvedPhotoOwnership,
+    listing: residentialPublishedApartment,
+    relatedReportCount: kadikoyApartmentReports.length - 1,
   },
 }
 
@@ -470,6 +619,182 @@ export const QueueReadsSeverityFirst: Story = {
     await expect(siddet.compareDocumentPosition(sebep) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     )
+  },
+}
+
+/**
+ * Bekleme süresi `now`'dan gelir, kartın kendi saatinden değil.
+ *
+ * Tek bir şikayet, dört farklı "şimdi" ile: kart `Date.now()` okusaydı dördü de
+ * **aynı** metni gösterirdi (ve o metin her gün değişirdi). Dört ayrı cevap
+ * çıkması, hesabın yalnız prop'a dayandığının kanıtı — Chromatic'in her gün fark
+ * üretmemesinin de sebebi bu.
+ *
+ * Dört kademe Türkçe ek uyumuyla birlikte ölçülüyor: `gündür`, `saattir`,
+ * `dakikadır`. Tarihin kendisi dört kartta da duruyor — süre onun yerine
+ * geçmiyor, önüne geçiyor.
+ */
+export const WaitingTimeComesFromNowNotTheClock: Story = {
+  args: { variant: 'queue', listing: tourismRejectedPension },
+  render: (args) => (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      {BEKLEME_ORNEKLERI.map((ornek) => (
+        <ReportCard {...args} key={ornek.now} now={ornek.now} />
+      ))}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    for (const ornek of BEKLEME_ORNEKLERI) {
+      await expect(canvas.getByText(ornek.beklenen)).toBeInTheDocument()
+    }
+
+    /* Dördü de aynı şikayet: açılış anı dört kartta da yazılı ve aynı. */
+    await expect(canvas.getAllByText('13 Tem 2026 09:12')).toHaveLength(BEKLEME_ORNEKLERI.length)
+  },
+}
+
+/**
+ * `now` verilmezse kart mutlak tarihe düşer — çökmez, uydurmaz.
+ *
+ * Geriye dönük uyumun ölçümü: `now` Faz 3'te eklendi, onsuz yazılmış her çağıran
+ * Faz 2'deki kartı görmeye devam etmeli.
+ */
+export const WaitingTimeNeedsNow: Story = {
+  args: { variant: 'queue', listing: tourismRejectedPension },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('Açıldı')).toBeInTheDocument()
+    await expect(canvas.getByText('13 Tem 2026 09:12')).toBeInTheDocument()
+    await expect(canvas.queryByText(/bekliyor$/)).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * `now`, `createdAt`'ten önceyse süre yazılmaz.
+ *
+ * Gerçek bir ihtimal: sayfa "şimdi"yi bir kez okuyup elinde tutabilir, saatler
+ * kayabilir, fixture'la oynanabilir. Elenmezse kart **"-1 gündür bekliyor"**
+ * derdi — bu yüzden iddia `queryByText(/bekliyor$/)` ile kuruluyor: eksi işaretli
+ * bir süre de o sorguya takılır ve test düşer.
+ */
+export const NowBeforeCreatedAtFallsBackToDate: Story = {
+  args: {
+    variant: 'queue',
+    listing: tourismRejectedPension,
+    now: '2026-07-13T08:00:00+03:00',
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.queryByText(/bekliyor$/)).not.toBeInTheDocument()
+    await expect(canvas.getByText('Açıldı')).toBeInTheDocument()
+    await expect(canvas.getByText('13 Tem 2026 09:12')).toBeInTheDocument()
+  },
+}
+
+/**
+ * Ad verilirse kimlik **yerine** geçer, yanına değil.
+ *
+ * Sözleşmenin sözü tam olarak bu; "adı da göster" demek olsaydı kart iki satırda
+ * aynı kişiyi iki kez yazardı. `queryByText` olumsuz iddiayı taşıyor.
+ */
+export const ResolvedNamesReplaceIds: Story = {
+  args: {
+    variant: 'detailed',
+    report: reportResolvedPhotoOwnership,
+    listing: residentialPublishedApartment,
+    reporter: verifiedConstructionCompany,
+    assignedAdmin: superAdminUser,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText(verifiedConstructionCompany.fullName)).toBeInTheDocument()
+    await expect(canvas.getByText(superAdminUser.fullName)).toBeInTheDocument()
+
+    await expect(
+      canvas.queryByText(reportResolvedPhotoOwnership.reporterUserId ?? ''),
+    ).not.toBeInTheDocument()
+    await expect(
+      canvas.queryByText(reportResolvedPhotoOwnership.assignedAdminId ?? ''),
+    ).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Ad çözümlemesi gelmemişse kart kimliği gösterir.
+ *
+ * `ResolvedNamesReplaceIds` ile aynı kayıt, yalnız iki prop eksik: kart çökmüyor
+ * ve boş bırakmıyor — elindeki tek gerçek UUID. Eksik bağlam, kırık başvuru değil.
+ */
+export const UnresolvedNamesFallBackToIds: Story = {
+  args: {
+    variant: 'detailed',
+    report: reportResolvedPhotoOwnership,
+    listing: residentialPublishedApartment,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(
+      canvas.getByText(reportResolvedPhotoOwnership.reporterUserId ?? ''),
+    ).toBeInTheDocument()
+    await expect(
+      canvas.getByText(reportResolvedPhotoOwnership.assignedAdminId ?? ''),
+    ).toBeInTheDocument()
+    await expect(canvas.queryByText(verifiedConstructionCompany.fullName)).not.toBeInTheDocument()
+  },
+}
+
+/**
+ * Anonimliğe şikayet karar verir, ad çözümlemesi değil.
+ *
+ * `reporter` burada **yanlışlıkla** veriliyor: şikayetin `reporterUserId`'si yok,
+ * yani ortada çözülecek bir ad da yok. Kart yine "Anonim" demeli — olmayan bir
+ * şikayetçiye ad takmak kartın en kolay yalanı olurdu. Atanan admin aynı story'de
+ * çözülüyor: iki alan birbirinden bağımsız.
+ */
+export const AnonymousReportIgnoresReporter: Story = {
+  args: {
+    variant: 'detailed',
+    report: reportDismissedNetArea,
+    listing: residentialPublishedApartment,
+    reporter: verifiedConstructionCompany,
+    assignedAdmin: moderatorUser,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('Anonim')).toBeInTheDocument()
+    await expect(canvas.queryByText(verifiedConstructionCompany.fullName)).not.toBeInTheDocument()
+
+    await expect(canvas.getByText(moderatorUser.fullName)).toBeInTheDocument()
+  },
+}
+
+/**
+ * Atanmamış şikayette "Atanmadı" — boş bir ad değil, bilinen bir durum.
+ *
+ * `assignedAdmin` verilmemesinin iki sebebi olabilir ve kart ikisini ayırt
+ * edemez ama etmesi de gerekmiyor: `assignedAdminId` yoksa atama **yoktur**,
+ * çözülememiş bir ad değildir. Kuyruktaki `Atanmamış` rozeti aynı durumun sıfat
+ * hâli; burası bir ad alanının değeri olduğu için cümle "Atanmadı".
+ */
+export const UnassignedShowsAKnownState: Story = {
+  args: {
+    variant: 'detailed',
+    report: reportOpenCriticalFraud,
+    listing: tourismRejectedPension,
+    reporter: verifiedConstructionCompany,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+
+    await expect(canvas.getByText('Atanmadı')).toBeInTheDocument()
+    await expect(canvas.getByText(verifiedConstructionCompany.fullName)).toBeInTheDocument()
   },
 }
 

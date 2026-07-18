@@ -30,12 +30,14 @@ const DURUM_TONU = {
 } as const satisfies Record<UserStatus, 'info' | 'success' | 'warning' | 'danger'>
 
 /**
- * Hesap durumundan **yürürlükteki** yaptırımın tipine.
+ * Hesap durumundan **yürürlükteki** yaptırımın tipine — `activeSanction`
+ * verilmediğinde başvurulan yedek.
  *
  * `UserAccount` yaptırım kaydını taşımıyor; taşıdığı tek şey durumun kendisi.
  * Askıdaki hesap tanım gereği bir `suspension`, banlı hesap bir `ban`
- * yaptırımının sonucudur — kartın söyleyebileceği kadarı bu. Gerekçe, başlangıç
- * ve bitiş `UserSanction`'da ve karta gelmiyor (bkz. component JSDoc'u).
+ * yaptırımının sonucudur — bu bir uydurma değil, durumun tanımı. Gerekçe,
+ * başlangıç ve bitiş buradan **türetilemez**; onları yalnız `activeSanction`
+ * getirir (bkz. component JSDoc'u).
  */
 const DURUM_YAPTIRIMI = {
   [UserStatus.PendingVerification]: null,
@@ -74,6 +76,30 @@ function Bilgi({ label, children }: { label: string; children: ReactNode }) {
       <dt className={css.factLabel}>{label}</dt>
       <dd className={css.factValue}>{children}</dd>
     </div>
+  )
+}
+
+/**
+ * Yaptırım kaydının ad–değer çifti. `Bilgi` ile **aynı ızgarayı** kullanır
+ * (`css.fact`/`factLabel`/`factValue`) ama `<dl>`/`<dt>`/`<dd>` yerine
+ * `<span>`'lerden kurulur.
+ *
+ * Sebep sözleşme değil HTML: `onClick` verilen kart bir `<button>`'a dönüyor ve
+ * butonun bütün çocukları phrasing content olmak zorunda — `<dl>` orada geçersiz.
+ * Aynı çatışmayı ReportCard da yaşadı ve aynı yönde çözdü ("`<dl>` semantik
+ * olarak daha doğru olurdu ama kullanılamıyor"). `<dt>`/`<dd>` kullanmak üstelik
+ * karta **yeni bir `<dl>`** eklemeyi gerektirirdi; span'ler hiçbir şey eklemiyor.
+ *
+ * Dikkat: kartın hesap alanları (`Bilgi`) hâlâ `<dl>` kullanıyor ve bu kart
+ * tıklanabilir olduğu için o **var olan bir ihlal** — bu turda bilerek
+ * dokunulmadı, raporlandı. Burada çoğaltılmadı.
+ */
+function YaptirimBilgisi({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span className={css.fact}>
+      <span className={css.factLabel}>{label}</span>
+      <span className={css.factValue}>{children}</span>
+    </span>
   )
 }
 
@@ -130,11 +156,30 @@ function Zaman({ value, saatli }: { value: ISODateTime; saatli: boolean }) {
  * kartın butonundan geçmiyor. `onClick` yoksa bölge sıradan bir `<div>`: imleç
  * değişmez, hover'da kart kalkmaz, klavye sırasında yer tutmaz.
  *
- * **Yaptırımın gerekçesi ve süresi bu kartta yok**, çünkü `UserAccount`'ta yok:
- * kart yürürlükte bir yaptırım *olduğunu* söyler (`security` varyantı), "neden"i
- * ve "ne zamana kadar"ı `UserSanction` taşır ve sözleşmede karta gelmiyor.
- * Uydurulmuş bir "14 gün" yazmaktansa susmak doğru — sayfa bu bilgiyi kendi
- * yaptırım geçmişi bölümünde gösterir.
+ * **Yaptırım kaydı `activeSanction` ile gelir ve alanları varyanta göre açılır —
+ * bu bir yoğunluk tercihi değil, yetki sınırıdır.** `compact` hiç göstermez
+ * (orada durum rozeti zaten tek bilgi); `detailed` yalnız **tipi** ve
+ * **`endsAt`**'i — `destek` rolünün gördüğü yüz, "askınız 29 Tem'de bitiyor"
+ * diyebilmeli; `security` ayrıca `reason`, `startsAt` ve `createdByAdminId`'yi.
+ * `UserSanction.reason` **iç gerekçe metnidir**, müşteriye okunacak cümle değil:
+ * `AdminPermission.UserViewProfile`'ın JSDoc'u onu alan alan gizli sayıyor.
+ * Gizli alan soluk veya `disabled` gösterilmez, **DOM'da hiç olmaz** — reponun
+ * en eski kuralı. Ölçüm: `SupportViewHidesSanctionReason`.
+ *
+ * **Kayıt gelmezse `security` yaptırımın yalnız tipini durumdan türetir** (Faz 2
+ * davranışı, `SanctionIsSurfacedOnSecurity` ölçüyor). `detailed` **türetmez** ve
+ * bu kasıtlı: kayıt yokken bandın söyleyebileceği tek kelimeyi durum rozeti
+ * yirmi piksel yukarıda zaten yazıyor — bandı `detailed`'da haklı çıkaran şey
+ * `endsAt`'tir ve o yalnız kayıtla gelir.
+ *
+ * **Süre mutlak yazılır** ("29 Tem 2026 10:30"), göreli değil: "14 gün kaldı"
+ * hesabı "şimdi"ye dayanır, story'yi her gün değiştirir ve Chromatic'te gerçek
+ * regresyonu gürültüye gömer. Bitişi olmayan yaptırım (süresiz ban) boş
+ * bırakılmaz, "Süresiz" diye **söylenir** — "alan gelmedi" ile "bitmiyor" aynı
+ * şey değil. Kaldırılmış yaptırım (`revokedAt` dolu) buraya konmaz çünkü
+ * "yürürlükteki" değildir; kart bunu savunmacı bir kontrolle **denetlemez** —
+ * sözleşme çağıranı bağlar, geçmiş yaptırımlar `SellerPanelProps.sanctions`'a
+ * aittir.
  *
  * **Yetki kartın işi değil:** `actions` dışarıdan gelir, kart eylem uydurmaz.
  * Kullanıcının yapamayacağı eylem `disabled` verilmez, `actions`'a hiç konmaz.
@@ -155,13 +200,23 @@ function Zaman({ value, saatli }: { value: ISODateTime; saatli: boolean }) {
  */
 export function UserSummaryCard({
   user,
+  activeSanction,
   variant = 'compact',
   actions,
   onClick,
 }: UserSummaryCardProps) {
   const tiklanabilir = onClick !== undefined
-  const yaptirim = DURUM_YAPTIRIMI[user.status]
   const dogrulamaRozeti = variant !== 'compact' || !user.verified
+
+  /*
+    Bandın yazacağı tip: kayıt geldiyse **onun** tipi, gelmediyse `security`'de
+    durumdan türetilen tip. `detailed` türetmiyor — gerekçesi component JSDoc'unda.
+
+    Kayıt varken `user.status`'e değil `activeSanction.type`'a bakılıyor: ikisi
+    çelişirse doğru cevap kaydındır, durum ondan türer.
+  */
+  const yaptirimTipi =
+    activeSanction?.type ?? (variant === 'security' ? DURUM_YAPTIRIMI[user.status] : null)
 
   const icerik = (
     <>
@@ -217,15 +272,96 @@ export function UserSummaryCard({
             </Badge>
           ) : null}
 
-          {/* Brifing 2.6: admin rolü yalnızca admin kullanıcılarında gösterilir. */}
-          {user.adminRole !== undefined ? (
+          {/*
+            Brifing 2.6: admin rolü yalnızca admin kullanıcılarında gösterilir —
+            ve yalnız `security`'de.
+
+            İkinci kapı Faz 3'te eklendi: rozet varyanttan **bağımsız** basılıyordu,
+            yani `detailed` — `destek`in gördüğü yüz — admin rolünü gösteriyordu.
+            `AdminPermission.UserViewProfile`'ın JSDoc'u `adminRole`'ü açıkça gizli
+            sayıyor ve `variant`'ın kendi JSDoc'u da öyle; uygulama ikisiyle de
+            çelişiyordu. `lastLoginAt` doğru kapılıydı, bu değildi — sızıntı tam
+            olarak "bir alanı listeye yazıp kapıyı kurmayı unutmak" biçimindeydi.
+            `UserManagementPage` ölçerken buldu.
+          */}
+          {variant === 'security' && user.adminRole !== undefined ? (
             <Badge tone="primary" variant="outline" size="sm">
               {ADMIN_ROLE_LABEL[user.adminRole]}
             </Badge>
           ) : null}
         </div>
 
-        {variant === 'detailed' ? (
+        {/*
+          Yaptırım bandı `compact`'te HİÇ yok: orada durum rozeti zaten tek bilgi
+          ve bant satırı iki katına çıkarırdı.
+        */}
+        {variant !== 'compact' && yaptirimTipi !== null ? (
+          <p className={css.sanction}>
+            <Ban size={16} aria-hidden="true" />
+            Yürürlükte olan yaptırım: {USER_SANCTION_TYPE_LABEL[yaptirimTipi]}
+          </p>
+        ) : null}
+
+        {/*
+          Kaydın alanları. **`variant` burada bir yetki kapısı**, bir yoğunluk
+          ayarı değil: `detailed` yalnız `endsAt`'i görür, `security` gerekçeyi
+          de. Gizli alan koşullu olarak **hiç render edilmiyor** — soluk veya
+          `aria-hidden` bırakmak metni DOM'da bırakırdı ve `destek` rolü onu
+          incelemede okurdu. Ölçüm: `SupportViewHidesSanctionReason`.
+        */}
+        {variant !== 'compact' && activeSanction !== undefined ? (
+          <span className={css.sanctionFacts}>
+            {variant === 'security' ? (
+              <>
+                <YaptirimBilgisi label="Gerekçe">{activeSanction.reason}</YaptirimBilgisi>
+                <YaptirimBilgisi label="Başlangıç">
+                  <Zaman value={activeSanction.startsAt} saatli />
+                </YaptirimBilgisi>
+              </>
+            ) : null}
+
+            <YaptirimBilgisi label="Bitiş">
+              {activeSanction.endsAt !== undefined ? (
+                <Zaman value={activeSanction.endsAt} saatli />
+              ) : (
+                /*
+                  Süresiz ban: `endsAt`'in yokluğu bir durum ve cümleyle
+                  söyleniyor (fixture'ın kendi JSDoc'u da bilgiyi alanın
+                  yokluğuna yüklüyor). Boş bırakmak "veri gelmedi" ile
+                  "bitmiyor"u karıştırırdı — biri eksik veri, öteki kararın ta
+                  kendisi.
+                */
+                <span className={css.missing}>Süresiz</span>
+              )}
+            </YaptirimBilgisi>
+
+            {/*
+              Kararı veren admin ham UUID olarak yazılıyor: kart veri çekmez ve
+              sözleşme yalnız `createdByAdminId` veriyor. ReportCard'ın
+              `reporterUserId`/`assignedAdminId` boşluğunun aynısı — raporlandı.
+            */}
+            {variant === 'security' ? (
+              <YaptirimBilgisi label="Karar veren">
+                {activeSanction.createdByAdminId}
+              </YaptirimBilgisi>
+            ) : null}
+          </span>
+        ) : null}
+
+        {/*
+          `security`, `detailed`'ın ÜST KÜMESİ — Faz 3'te düzeltildi.
+
+          Buradaki kapı `variant === 'detailed'` idi ve sonuç ters bir yetki
+          modeliydi: `security` (tam görünüm, `UserView` ister) kullanıcının
+          e-postasını, telefonunu ve ilan sayaçlarını **çizmiyordu**, `detailed`
+          (`destek`in yüzü) çiziyordu. Yani moderatör ile süper admin, destek'in
+          gördüğü iletişim bilgisini göremiyordu — oysa brifing 2.6 ikisini de
+          görünen veri sayıyor ve `variant`'ın JSDoc'u `security`'ye "tam görünüm"
+          diyor. `UserDetailPage` ölçerken buldu.
+
+          Kademe artık gerçekten kademeli: compact ⊂ detailed ⊂ security.
+        */}
+        {variant !== 'compact' ? (
           <dl className={css.facts}>
             <Bilgi label="E-posta">{user.email}</Bilgi>
             <Bilgi label="Telefon">{user.phone}</Bilgi>
@@ -240,45 +376,36 @@ export function UserSummaryCard({
         ) : null}
 
         {variant === 'security' ? (
-          <>
-            {yaptirim !== null ? (
-              <p className={css.sanction}>
-                <Ban size={16} aria-hidden="true" />
-                Yürürlükte olan yaptırım: {USER_SANCTION_TYPE_LABEL[yaptirim]}
-              </p>
-            ) : null}
+          <dl className={css.facts}>
+            <Bilgi label="Son giriş">
+              {user.lastLoginAt !== undefined ? (
+                <Zaman value={user.lastLoginAt} saatli />
+              ) : (
+                /*
+                  Alanın yokluğu bir durum ve cümleyle söyleniyor. Boş bırakmak
+                  "veri gelmedi" ile "hiç giriş yapmadı"yı karıştırırdı; ikisi
+                  yaptırım kararında aynı şey değil.
+                */
+                <span className={css.missing}>Hiç giriş yapmadı</span>
+              )}
+            </Bilgi>
 
-            <dl className={css.facts}>
-              <Bilgi label="Son giriş">
-                {user.lastLoginAt !== undefined ? (
-                  <Zaman value={user.lastLoginAt} saatli />
-                ) : (
-                  /*
-                    Alanın yokluğu bir durum ve cümleyle söyleniyor. Boş bırakmak
-                    "veri gelmedi" ile "hiç giriş yapmadı"yı karıştırırdı; ikisi
-                    yaptırım kararında aynı şey değil.
-                  */
-                  <span className={css.missing}>Hiç giriş yapmadı</span>
-                )}
-              </Bilgi>
-
-              {/*
-                Doğrulama burada TEKRAR yazılmıyor: rozet zaten yukarıda ve
-                `security`'de iki hâli de gösteriyor. "Doğrulama: Doğrulanmış"
-                satırı aynı kelimeyi yirmi piksel altında ikinci kez söyler ve
-                asıl bulguları (son giriş, şikayet) aşağı iterdi.
-              */}
-              <Bilgi label="Şikayet">
-                {user.reportCount > 0 ? (
-                  <Badge tone="danger" variant="soft" size="sm" leadingIcon={<Flag size={12} />}>
-                    {user.reportCount.toLocaleString('tr-TR')} açık şikayet
-                  </Badge>
-                ) : (
-                  <span className={css.clean}>Açık şikayet yok</span>
-                )}
-              </Bilgi>
-            </dl>
-          </>
+            {/*
+              Doğrulama burada TEKRAR yazılmıyor: rozet zaten yukarıda ve
+              `security`'de iki hâli de gösteriyor. "Doğrulama: Doğrulanmış"
+              satırı aynı kelimeyi yirmi piksel altında ikinci kez söyler ve
+              asıl bulguları (son giriş, şikayet) aşağı iterdi.
+            */}
+            <Bilgi label="Şikayet">
+              {user.reportCount > 0 ? (
+                <Badge tone="danger" variant="soft" size="sm" leadingIcon={<Flag size={12} />}>
+                  {user.reportCount.toLocaleString('tr-TR')} açık şikayet
+                </Badge>
+              ) : (
+                <span className={css.clean}>Açık şikayet yok</span>
+              )}
+            </Bilgi>
+          </dl>
         ) : null}
       </div>
     </>

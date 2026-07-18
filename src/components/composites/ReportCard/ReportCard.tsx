@@ -58,6 +58,47 @@ const DURUM_TONU = {
  */
 const KAPALI_DURUMLAR: readonly ReportStatus[] = [ReportStatus.Resolved, ReportStatus.Dismissed]
 
+const DAKIKA = 60_000
+const SAAT = 60 * DAKIKA
+const GUN = 24 * SAAT
+
+/**
+ * "3 gündür bekliyor" — `createdAt` ile `now` arasındaki farkın Türkçesi.
+ *
+ * **Saat prop'tan gelir, `Date.now()`'dan değil.** Fonksiyon saf: aynı iki
+ * girdi her zaman aynı dizeyi verir, dolayısıyla story de Chromatic de her gün
+ * aynı kartı görür.
+ *
+ * Süre **geçen zamandır**, takvim günü değil: 23:50'de açılan şikayet 20 dakika
+ * sonra "1 gündür bekliyor" demez. (Europe/Istanbul 2016'dan beri kalıcı UTC+3
+ * olduğu için ikisi zaten çakışıyor, ama doğru tanım bu — kuyruğun sorduğu şey
+ * "kaç gündür duruyor", "hangi takvim gününde açıldı" değil.)
+ *
+ * Eşikler aşağıya yuvarlanır ve dört kademe de Türkçe ek uyumunu taşır:
+ * `gün` → `gündür`, `saat` → `saattir` (ince ünlü alan alıntı: "saati",
+ * "saatler"), `dakika` → `dakikadır`.
+ *
+ * `undefined` döner — yani kart mutlak tarihe düşer — üç halde: `now` hiç
+ * verilmemişse (Faz 2'nin davranışı, geriye dönük uyum), tarihlerden biri
+ * ayrıştırılamıyorsa, ve `now` `createdAt`'ten **önceyse**. Sonuncusu gerçek
+ * bir ihtimal (sayfa "şimdi"yi bir kez okuyup uzun süre elinde tutabilir,
+ * saatler kayabilir) ve elenmezse kart "-1 gündür bekliyor" derdi: uydurulmuş
+ * bir süre yerine elindeki tek gerçek olan açılış anı gösteriliyor.
+ */
+function beklemeSuresi(createdAt: ISODateTime, now: ISODateTime | undefined): string | undefined {
+  if (now === undefined) return undefined
+
+  const fark = new Date(now).getTime() - new Date(createdAt).getTime()
+
+  if (!Number.isFinite(fark) || fark < 0) return undefined
+
+  if (fark < DAKIKA) return '1 dakikadan kısa süredir bekliyor'
+  if (fark < SAAT) return `${Math.floor(fark / DAKIKA)} dakikadır bekliyor`
+  if (fark < GUN) return `${Math.floor(fark / SAAT)} saattir bekliyor`
+
+  return `${Math.floor(fark / GUN)} gündür bekliyor`
+}
+
 /**
  * Etiketli meta satırı.
  *
@@ -74,9 +115,22 @@ function MetaSatiri({ label, children }: { label: string; children: ReactNode })
   )
 }
 
-function Zaman({ value }: { value: ISODateTime }) {
+/**
+ * `tone` varsayılanı destructuring'de veriliyor, recipe'in `defaultVariants`'ına
+ * bırakılmıyor: `exactOptionalPropertyTypes` açıkken `css.time({ tone })`
+ * çağrısına `tone: undefined` geçmek TS2375 verir (recipe'in `tone`'u opsiyonel,
+ * yani "yok" ile "undefined" aynı şey değil). Varsayılan burada, tip de
+ * `'secondary' | 'muted'`e iniyor.
+ */
+function Zaman({
+  value,
+  tone = 'secondary',
+}: {
+  value: ISODateTime
+  tone?: 'secondary' | 'muted'
+}) {
   return (
-    <time className={css.time} dateTime={machineDateTime(value)}>
+    <time className={css.time({ tone })} dateTime={machineDateTime(value)}>
       {formatDateTime(value)}
     </time>
   )
@@ -103,15 +157,35 @@ function Zaman({ value }: { value: ISODateTime }) {
  * durumu `StatusBadge` ile görünür: şikayetin durumu ile ilanın durumu üçüncü
  * bir eksendir, arşivlenmiş ilana açılmış şikayet gerçek bir kayıttır.
  *
- * **Göreli zaman ("3 gün önce") yok — `queue` varyantında bile.** Kuyruğun
- * derdi yaştır ama yaşın hesabı "şimdi"ye dayanır; component saati kendi
- * okuyamaz (aynı story dün "3 gün önce", bugün "4 gün önce" yazar ve
- * Chromatic her gün fark üretir). Kart bunun yerine açılış anını öne çıkarır:
- * `queue`'da tarih kendi satırında, ikonlu ve "Açıldı" etiketiyle durur. Yaşın
- * gerçekten hesaplanması gerekirse sözleşmeye `now` eklenmeli — saat dışarıdan
- * verilmeli. Tarihlerin tamamı `utils/formatDateTime`'dan geçer (`tr-TR` +
+ * **Bekleme süresi `now`'dan hesaplanır; kart saati kendi okumaz.** Kuyruğun
+ * derdi yaştır ama yaşın hesabı "şimdi"ye dayanır ve component `new Date()`
+ * çağıramaz: çağırsaydı aynı story dün "3 gün önce", bugün "4 gün önce" yazar,
+ * Chromatic her gün fark üretir ve gerçek bir görsel regresyon o gürültünün
+ * içinde kaybolurdu. Saat bu yüzden dışarıdan gelir — `now` verilirse `queue`
+ * "3 gündür bekliyor" der, verilmezse Faz 2'nin davranışı aynen sürer: tarih
+ * kendi satırında, ikonlu ve "Açıldı" etiketiyle durur.
+ *
+ * Süre verildiğinde **tarih kaybolmaz, ikinci plana düşer**: "ne kadardır
+ * bekliyor" ile "hangi gün açıldı" ayrı sorulardır (ikincisi bir kararın
+ * kaydına girer) ve `<time datetime>`'ın makine değeri her hâlde durmalı.
+ * Tarihlerin tamamı `utils/formatDateTime`'dan geçer (`tr-TR` +
  * `Europe/Istanbul` sabit); "şikayet hangi gün açıldı" sorusu bakanın
  * makinesine göre farklı cevaplanamaz.
+ *
+ * **Ad çözümleme çağıranın işi.** Sözleşme yalnız `reporterUserId` ve
+ * `assignedAdminId` (UUID) taşıyor, kart da veri çekmez: `reporter` /
+ * `assignedAdmin` verilirse kart **adı** gösterir, verilmezse kimliği — eksik
+ * bağlam, kırık başvuru değil (`listing` ile aynı desen, kimliğin ilgili kayda
+ * gerçekten ait olduğunu doğrulamak da aynı şekilde çağıranın işi).
+ * `AdminUser` diye bir tip **yok**: admin de `UserAccount`, `adminRole`'ü dolu.
+ * Anonimliğe **şikayetin kendisi** karar verir, ad çözümlemesi değil —
+ * `reporterUserId` yoksa çözülecek bir ad da yoktur ve kart "Anonim" der.
+ *
+ * **`relatedReportCount` şikayetin değil ilanın özelliği**, o yüzden ilan
+ * kutusunda duruyor ve ilan gelmemiş olsa da görünür (sayı `listingId`'ye
+ * bağlıdır, başlığa değil). Üç şikayetli bir ilanın her kartı `2` taşır: kartı
+ * yan yana üç kart olarak görmek "bu ilan üç kez şikayet edilmiş" demenin
+ * yerini tutmaz, çünkü kuyrukta kartlar yan yana gelmeyebilir.
  *
  * **Tıklanabilir bölge `<button>`'dır ama `actions`'ı sarmaz.** İç içe
  * etkileşimli element geçersiz HTML'dir ve içteki butonu klavyeyle
@@ -128,9 +202,16 @@ function Zaman({ value }: { value: ISODateTime }) {
  * eder; kademeler kapsayıcı olduğu için önce tamı sınanmalı.
  *
  * @example
+ * // `now` sayfada BİR KEZ okunur ve bütün kartlara aynı değer geçer: kart
+ * // başına `new Date()` çağırmak listeyi kendi içinde tutarsız yapardı
+ * // (üstteki kart 3, alttaki 4 gün derdi) ve determinizmi de kırardı.
  * <ReportCard
  *   report={report}
  *   listing={ilan}
+ *   reporter={kullanicilar[report.reporterUserId]}
+ *   assignedAdmin={adminler[report.assignedAdminId]}
+ *   relatedReportCount={ayniIlanaBagliSikayetSayisi - 1}
+ *   now={simdi}
  *   variant="queue"
  *   actions={yetkiler.canResolve ? <Button size="sm" onClick={() => coz(report)}>Çöz</Button> : undefined}
  *   onClick={sikayetiAc}
@@ -139,6 +220,10 @@ function Zaman({ value }: { value: ISODateTime }) {
 export function ReportCard({
   report,
   listing,
+  reporter,
+  assignedAdmin,
+  relatedReportCount,
+  now,
   variant = 'compact',
   actions,
   onClick,
@@ -147,6 +232,9 @@ export function ReportCard({
   const kuyruk = variant === 'queue'
   const detayli = variant === 'detailed'
   const kapali = KAPALI_DURUMLAR.includes(report.status)
+  const bekleme = beklemeSuresi(report.createdAt, now)
+  /** `0` gösterilmez: "0 benzer şikayet daha" bir bilgi değil, gürültüdür. */
+  const benzerVar = relatedReportCount !== undefined && relatedReportCount > 0
 
   /** Kapak yoksa ilk fotoğraf; o da yoksa görsel hiç render edilmez. */
   const kapak = listing?.photos.find((foto) => foto.isCover) ?? listing?.photos[0]
@@ -200,6 +288,19 @@ export function ReportCard({
         )}
       </span>
 
+      {/*
+        Ton `warning`: aynı ilanın tekrar tekrar şikayet edilmesi triage'ın
+        "buna daha dikkatli bak" sinyali. Tonun şiddet rozetiyle çakışması
+        sorun değil — okuyan kişi tonu değil yazıyı okur, ve rozet ilan
+        kutusunun içinde, şiddet kanalının dışında duruyor. `sm` her varyantta:
+        bu ilanın notu, kuyruğun manşeti değil.
+      */}
+      {benzerVar ? (
+        <Badge className={css.relatedBadge} tone="warning" size="sm">
+          {relatedReportCount} benzer şikayet daha
+        </Badge>
+      ) : null}
+
       {listing !== undefined ? <StatusBadge status={listing.status} size="sm" /> : null}
     </span>
   )
@@ -222,23 +323,34 @@ export function ReportCard({
 
       {kuyruk ? (
         <span className={css.queueMeta}>
+          {/*
+            `now` verilmişse etiketin yerini süre alır ve tarih söner: kuyruğun
+            ilk okuduğu şey "ne kadardır bekliyor". Verilmemişse cümle Faz 2'deki
+            hâlinde kalır. İkisinde de `<time>` aynı yerde — makine değeri hiç
+            kaybolmuyor.
+          */}
           <span className={css.age}>
             <Clock size={14} aria-hidden="true" />
-            Açıldı
-            <Zaman value={report.createdAt} />
+            {bekleme ?? 'Açıldı'}
+            <Zaman value={report.createdAt} tone={bekleme !== undefined ? 'muted' : 'secondary'} />
           </span>
 
           {/*
             Atanmamış kritik şikayet kuyruğun en kötü hâli: kimse üstüne
             almamış. "Atanmış" bilgisi ise triage kararını değiştirmez, o
-            yüzden yalnız kimin aldığı yazılıyor, rozet çıkmıyor.
+            yüzden yalnız kimin aldığı yazılıyor, rozet çıkmıyor. Rozet bir
+            **sıfat** ("atanmamış şikayet"), aşağıdaki meta satırı ise bir ad
+            alanının değeri ("Atanan admin: Atanmadı") — iki ayrı cümle,
+            bilerek iki ayrı kelime.
           */}
           {report.assignedAdminId === undefined ? (
             <Badge tone="warning" variant="outline" size="sm">
               Atanmamış
             </Badge>
           ) : (
-            <span className={css.assignee}>Atanan: {report.assignedAdminId}</span>
+            <span className={css.assignee}>
+              Atanan: {assignedAdmin?.fullName ?? report.assignedAdminId}
+            </span>
           )}
         </span>
       ) : (
@@ -256,9 +368,23 @@ export function ReportCard({
           )}
 
           <span className={css.metaGrid}>
-            {/* Anonim şikayet gerçek bir hâl: form oturum açmadan da doldurulabiliyor. */}
-            <MetaSatiri label="Şikayet eden">{report.reporterUserId ?? 'Anonim'}</MetaSatiri>
-            <MetaSatiri label="Atanan admin">{report.assignedAdminId ?? 'Atanmamış'}</MetaSatiri>
+            {/*
+              Anonim şikayet gerçek bir hâl: form oturum açmadan da
+              doldurulabiliyor. Karar `reporterUserId`'nin: alan yoksa
+              çözülecek bir ad da yoktur ve `reporter` yanlışlıkla verilmiş
+              olsa bile kart "Anonim" der — kartın en kolay yalanı, olmayan bir
+              şikayetçiye ad takmak olurdu.
+            */}
+            <MetaSatiri label="Şikayet eden">
+              {report.reporterUserId === undefined
+                ? 'Anonim'
+                : (reporter?.fullName ?? report.reporterUserId)}
+            </MetaSatiri>
+            <MetaSatiri label="Atanan admin">
+              {report.assignedAdminId === undefined
+                ? 'Atanmadı'
+                : (assignedAdmin?.fullName ?? report.assignedAdminId)}
+            </MetaSatiri>
             <MetaSatiri label="Güncellendi">
               <Zaman value={report.updatedAt} />
             </MetaSatiri>
