@@ -104,8 +104,9 @@ const meta = {
           'erişilebilir adı **"rol + izin"** — 128 kutunun hepsi "Seç" deseydi ekran okuyucu ' +
           'kullanıcısı hangisinde olduğunu ayırt edemezdi. `readOnly` devre dışı kutu değil ' +
           'ikon gösterir: kilitli bir kutu tarlası "yetkin yok" diye okunur, oysa salt okunur ' +
-          'matris çalışan bir cevaptır. `diff`in tabanı `ROLE_PERMISSIONS` — sözleşmede önceki ' +
-          'hâli taşıyan prop yok.',
+          'matris çalışan bir cevaptır. `diff`in tabanını **`baseline`** söyler (Faz 3); ' +
+          'verilmezse `ROLE_PERMISSIONS`a düşer. Ayarlar ekranı **kayıtlı** izinleri taban ' +
+          'verir, böylece diff "kaydetmeden önce neyi değiştiriyorum" sorusunu cevaplar.',
       },
     },
     ai: {
@@ -423,7 +424,7 @@ export const ChangedCellsAreMarked: Story = {
     await expect(dokunulmamis).toHaveTextContent('Var')
     await expect(dokunulmamis).not.toHaveTextContent('eklendi')
 
-    await expect(canvas.getByText('4 hücre varsayılan izinlerden farklı')).toBeInTheDocument()
+    await expect(canvas.getByText('4 hücre önceki hâlinden farklı')).toBeInTheDocument()
   },
 }
 

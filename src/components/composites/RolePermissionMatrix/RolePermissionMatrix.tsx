@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react'
 import { Check, CircleMinus, CirclePlus, Minus } from 'lucide-react'
-import { ROLE_PERMISSIONS, type AdminPermission, type AdminRole } from '../../../types/domain'
+import { ROLE_PERMISSIONS, type AdminPermission } from '../../../types/domain'
 import { ADMIN_PERMISSION_LABEL, ADMIN_ROLE_LABEL } from '../../../domain/labels'
 import { Checkbox } from '../../primitives/Checkbox'
 import { Spinner } from '../../primitives/Spinner'
 import type { RolePermissionMatrixProps } from '../../../types/component-props'
 import * as css from './RolePermissionMatrix.css'
 
-/** Hücrenin `ROLE_PERMISSIONS` temeline göre okunuşu. */
+/** Hücrenin tabana (`baseline`) göre okunuşu. */
 type HucreDurumu = 'granted' | 'denied' | 'added' | 'removed'
 
 interface HucreSunumu {
@@ -42,17 +42,17 @@ const HUCRE_SUNUMU = {
 } as const satisfies Record<HucreDurumu, HucreSunumu>
 
 /**
- * Hücreyi `ROLE_PERMISSIONS`'taki karşılığıyla kıyaslar.
+ * Hücreyi tabandaki karşılığıyla kıyaslar.
  *
- * Temel neden `ROLE_PERMISSIONS`: sözleşmede karşılaştırılacak önceki hâli
- * taşıyan bir prop yok, ama `diff`'in bir tabana ihtiyacı var. Domain'in kendi
- * eşlemesi tek makul aday — brifing 1.4 matrisinin kodda karşılığı odur ve
- * ayarlar ekranı düzenlemeye ondan başlar.
+ * Taban `baseline`'dan gelir; verilmezse `ROLE_PERMISSIONS`'a düşer (Faz 2'nin
+ * davranışı, geriye dönük uyum için korundu).
  */
-function hucreDurumu(role: AdminRole, permission: AdminPermission, isaretli: boolean): HucreDurumu {
-  const temelde: readonly AdminPermission[] = ROLE_PERMISSIONS[role]
-
-  if (temelde.includes(permission) === isaretli) return isaretli ? 'granted' : 'denied'
+function hucreDurumu(
+  taban: readonly AdminPermission[],
+  permission: AdminPermission,
+  isaretli: boolean,
+): HucreDurumu {
+  if (taban.includes(permission) === isaretli) return isaretli ? 'granted' : 'denied'
   return isaretli ? 'added' : 'removed'
 }
 
@@ -77,13 +77,14 @@ function hucreDurumu(role: AdminRole, permission: AdminPermission, isaretli: boo
  * matris çalışan bir cevaptır: "bu rol ne yapabilir". Onun yerine ikon artı
  * gizli metin ("Var" / "Yok") — renk tek başına durum taşımaz.
  *
- * **`diff`'in tabanı `ROLE_PERMISSIONS`.** Sözleşme neye göre "değişti"
- * diyeceğimizi söylemiyor ve önceki hâli taşıyan bir prop yok; domain'in
- * eşlemesi varsayıldı (bkz. `hucreDurumu`). Kayıtlı izinler bir gün
- * `ROLE_PERMISSIONS`'tan ayrılırsa bu varsayım yanlış diff üretir — kalıcı
- * çözüm sözleşmeye `baseline` prop'u eklemek. `diff` düzenlenemez: kaydetmeden
- * önceki "neyi değiştiriyorum" ekranıdır, orada karar verilir, düzeltme için
- * `editable`'a dönülür.
+ * **`diff`'in tabanını `baseline` söyler** (Faz 3'te eklendi); verilmezse
+ * `ROLE_PERMISSIONS`'a düşer. Faz 2'de taban domain sabitine **gömülüydü** ve bu
+ * yalnız kayıtlı izinler sabitle aynı kaldığı sürece doğruydu: `superAdmin` bir
+ * izni kaydettiği an sunucunun gerçeği sabitten ayrılır ve matris o günden sonra
+ * hiçbir şey değişmemişken "değişmiş" hücreler gösterirdi. Ayarlar ekranı artık
+ * **kayıtlı** hâli taban veriyor, dolayısıyla diff "kaydetmeden önce neyi
+ * değiştiriyorum" sorusunu cevaplıyor. `diff` düzenlenemez: orada karar verilir,
+ * düzeltme için `editable`'a dönülür.
  *
  * **`disabled` yetki anlatmaz.** `permission:manage` izni olmayan kullanıcıya
  * kilitli matris değil `readOnly` matris verilir, ya da sayfa hiç render
@@ -106,6 +107,7 @@ export function RolePermissionMatrix({
   roles,
   permissions,
   value,
+  baseline = ROLE_PERMISSIONS,
   variant = 'editable',
   disabled = false,
   saving = false,
@@ -123,7 +125,11 @@ export function RolePermissionMatrix({
           (toplam, permission) =>
             toplam +
             roles.filter((role) => {
-              const durum = hucreDurumu(role, permission, value[role].includes(permission))
+              const durum = hucreDurumu(
+                baseline[role],
+                permission,
+                value[role].includes(permission),
+              )
               return durum === 'added' || durum === 'removed'
             }).length,
           0,
@@ -141,16 +147,26 @@ export function RolePermissionMatrix({
       ? 'Her hücre işaretlenebilir bir kutudur.'
       : etkinVaryant === 'readOnly'
         ? 'Salt okunur.'
-        : `Salt okunur; ${degisenSayisi} hücre varsayılan izinlerden farklı.`)
+        : `Salt okunur; ${degisenSayisi} hücre önceki hâlinden farklı.`)
 
   return (
     <div className={css.root}>
       {etkinVaryant === 'diff' ? (
         <div className={css.diffBar}>
           <span className={css.diffCount}>
+            {/*
+              "Önceki hâli" bilerek belirsiz: tabanı `baseline` söylüyor ve ne
+              olduğunu yalnız çağıran bilir — ayarlar ekranı **kayıtlı** izinleri
+              veriyor, verilmeyen çağıranda taban `ROLE_PERMISSIONS`'a düşüyor.
+              Faz 2'de burada "varsayılan izinlerden farklı" yazıyordu; `baseline`
+              eklenince o cümle kayıtlı hâle göre kıyaslarken "varsayılan" demeye
+              devam ediyordu — yani ekrandaki tek görünür açıklama yalan
+              söylüyordu. Tabanı adlandırmak çağıranın işi (SettingsPage matrisin
+              üstünde hangi soruyu sorduğunu yazıyor).
+            */}
             {degisenSayisi === 0
-              ? 'Varsayılan izinlere göre değişiklik yok'
-              : `${degisenSayisi.toLocaleString('tr-TR')} hücre varsayılan izinlerden farklı`}
+              ? 'Önceki hâline göre değişiklik yok'
+              : `${degisenSayisi.toLocaleString('tr-TR')} hücre önceki hâlinden farklı`}
           </span>
 
           <ul className={css.legend}>
@@ -234,7 +250,7 @@ export function RolePermissionMatrix({
 
                   const gosterim: HucreDurumu =
                     etkinVaryant === 'diff'
-                      ? hucreDurumu(role, permission, isaretli)
+                      ? hucreDurumu(baseline[role], permission, isaretli)
                       : isaretli
                         ? 'granted'
                         : 'denied'

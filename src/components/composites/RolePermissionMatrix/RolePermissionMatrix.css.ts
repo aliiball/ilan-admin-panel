@@ -39,6 +39,51 @@ export const visuallyHidden = style({
  */
 export const scroller = style({
   width: '100%',
+  /*
+    `position: relative` — GÖRSEL DEĞİL, KAPSAMA İÇİN. Kaldırmayın.
+
+    Faz 3'te ölçüldü: 320 pikselde sayfa 604 piksele genişliyordu ve sebebi
+    tablo DEĞİLDİ (tablo bu kabın içinde düzgünce kırpılıyor). Suçlu, hücrelerdeki
+    `Checkbox`'ların `hideLabel` etiketleri: `Checkbox_visuallyHidden` `position:
+    absolute` + `width: 1px` + `clip: rect(0,0,0,0)`.
+
+    **`overflow: hidden`, kapsayan bloğu kendisi OLMAYAN mutlak konumlu bir
+    torunu kırpmaz.** Bu kap `position: static` olduğu sürece o span'lerin
+    kapsayan bloğu değildi; span'ler 640 pikselik tablonun içindeki statik
+    yerlerine göre konumlanıp (en sağdaki `left: 603`) kabın dışına taşıyor ve
+    viewport'un kaydırma alanını 604'e çekiyorlardı. `clip` onları GÖRSEL olarak
+    siliyor ama **kaydırma alanından silmiyor** — görünmez 1 pikseller sayfayı
+    yatay kaydırtıyordu.
+
+    Teşhis şöyle ayrıştı: kaba `contain: paint` vermek (kapsayan blok yapar)
+    düzeltiyordu, `overflow: hidden` vermek **düzeltmiyordu** — mutlak konumlu
+    torun kırpılmadığı için. `<tbody>`'yi silmek de düzeltiyordu (kutular gider).
+
+    `position: relative` kabı kapsayan blok yapar, span'ler içeride kalır ve
+    `overflow` onları gerçekten kırpar. Yapışkan sütunu etkilemez: sticky zaten
+    kaydırma kabına göre konumlanır.
+
+    Aynı desen `visuallyHidden` etiketi olan her kontrolü bir kaydırma kabına
+    koyan herkesi ilgilendirir.
+  */
+  position: 'relative',
+  /*
+    `minWidth: 0` OLMADAN bu kap hiç kaydırmıyordu — Faz 3'te ekran görüntüsüyle
+    ölçüldü ve yukarıdaki "tablo kesilmez, kaydırılır" sözü **yalandı**: 320
+    pikselde kaydırma çubuğu çıkmıyor, SAYFA 604 piksele genişliyordu (yani
+    matrisin kendi story'si tek başına yatay kaydırma üretiyordu; SettingsPage
+    onu devralmıştı).
+
+    Sebep: `root` bir grid ve bu kap onun öğesi; grid öğesinin `min-width`
+    varsayılanı `auto`, yani **min-content**. Tablonun `minWidth:
+    vars.container.sm`'i (40rem) min-content'i 640 piksele çiviliyor, öğe onun
+    altına inemiyor ve `overflowX: auto` hiç devreye girmiyor — taşan şeyi kap
+    değil sayfa taşıyor. `overflow` ancak kap KÜÇÜLEBİLDİĞİNDE kaydırma üretir.
+
+    Testler bunu görmedi çünkü hiçbiri 320 pikselde sayfa genişliğini ölçmüyordu;
+    vitest'in gerçek viewport'u 414 ve orada da taşıyordu, ama kimse sormuyordu.
+  */
+  minWidth: 0,
   overflowX: 'auto',
   isolation: 'isolate',
   border: `1px solid ${vars.color.border.subtle}`,
