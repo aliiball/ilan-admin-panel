@@ -9,6 +9,7 @@ import type {
 } from 'react'
 
 import type {
+  AdminNote,
   AdminPermission,
   AdminRole,
   AuditLogEntry,
@@ -422,6 +423,26 @@ export interface InputProps
    * @default false
    */
   disabled?: boolean | undefined
+  /**
+   * Alanı **mesajsız** geçersiz işaretler: kırmızı kenarlık + `aria-invalid`,
+   * ama alanın altında metin yok.
+   *
+   * `error` (FieldMetaProps) bir dizedir ve **hem** kutuyu kırmızıya boyar **hem**
+   * o dizeyi alanın altına basar. Ama bazı geçersizlikler alan bazında bir cümle
+   * ÜRETMEZ: giriş ekranında "e-posta ya da parola hatalı" tek bir üst uyarıdır —
+   * hangi alanın yanlış olduğunu söylemek "bu e-posta kayıtlı" bilgisini
+   * sızdırır — yine de **iki alan da** kırmızı olmalı. Faz 3'e kadar bunu ifade
+   * etmenin yolu yoktu: `data-invalid` yalnız dolu bir `error`'dan doğuyordu,
+   * yani mesajsız kırmızı kenarlık **imkânsızdı** ve `AuthScreen`'in giriş
+   * hatasında alanları kırmızı olmuyordu (ölçüldü).
+   *
+   * Öncelik: `error` doluysa o kazanır (kırmızı + mesaj). `invalid` yalnız
+   * `error` boşken devreye girer; ikisi de `Field.Root`'a `data-invalid`
+   * yazdırır ve `aria-invalid` verir.
+   *
+   * @default false
+   */
+  invalid?: boolean
   /**
    * Asıl `<input>` elementine erişim.
    *
@@ -2416,6 +2437,22 @@ export interface EmptyStateProps {
   /** İkincil eylem (yardım, dokümantasyon). */
   secondaryAction?: ReactNode
   /**
+   * Başlığın başlık düzeyi (`<h2>`…`<h6>`). Verilmezse başlık **`<p>`** olarak
+   * basılır — Faz 3'e kadar tek davranış buydu.
+   *
+   * Sebep: bir composite, bir sayfanın içinde **hangi düzeyde** yaşadığını
+   * bilemez; kör bir `<h3>` basmak `heading-order` ihlali riski taşırdı, bu
+   * yüzden başlık `<p>` idi. Ama **tam sayfa** bir ekran (`AuthScreen`) düzeyini
+   * BİLİR ve orada `<p>` başlık sayfayı `<h1>`'siz bırakırdı; brifing 2.11
+   * `EmptyState`'i türetiyor. Aynı boşluk `ListingFactsProps.headingLevel`'la
+   * kardeş — fark şu ki burada gerçek bir tüketici var.
+   *
+   * Bilen çağıran verir; verilmezse davranış aynen korunur (`<p>`).
+   *
+   * @default undefined (başlık `<p>`)
+   */
+  headingLevel?: 2 | 3 | 4 | 5 | 6
+  /**
    * - `default`: sayfanın tamamı boşken. Geniş nefes alanı.
    * - `compact`: kart, panel veya tablo içinde. Daha az dikey alan.
    * - `filtered`: filtre sonucu boşken. Kesik kenarlıkla ayrılır — veri
@@ -2452,6 +2489,32 @@ export interface ErrorStateProps {
    * yerde buton sunmak kullanıcıyı boşa uğraştırır.
    */
   onRetry?: () => void
+  /**
+   * "Tekrar dene"nin yanındaki ikincil eylem — tipik olarak **güvenli geri dönüş
+   * bağlantısı**.
+   *
+   * Brifing 2.1: 403 ve benzeri kalıcı hatalar "güvenli bir geri dönüş bağlantısı"
+   * göstermeli, ama `ErrorState`'in slotu yoktu; `AuditLogPage` bağlantıyı kendi
+   * `<p><Link/></p>`'siyle çizmek zorunda kaldı (ve bu yüzden ekran Router
+   * context'i gerektirdi). Buraya bir `<Link>` veya `<Button>` geçmek onu
+   * standartlaştırır.
+   *
+   * `onRetry` tekrar denemenin **anlamlı** olduğu yerdedir; bu ise
+   * `unauthorized`/`notFound` gibi tekrar denemenin işe yaramadığı yerde
+   * kullanıcıya bir çıkış verir. İkisi birlikte de olabilir.
+   */
+  secondaryAction?: ReactNode
+  /**
+   * Başlığın başlık düzeyi. Verilmezse başlık **`<p>`** olarak basılır.
+   *
+   * Gerekçe `EmptyStateProps.headingLevel` ile birebir aynı: composite düzeyini
+   * bilemez, ama tam sayfa bir ekran bilir ve `variant="page"` bir `<h1>`'siz
+   * sayfa üretmemeli. `AuthScreen`'in `fatalError`/`forbidden`/`notFound` modları
+   * bunu ister.
+   *
+   * @default undefined (başlık `<p>`)
+   */
+  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6
 }
 
 export interface ConfirmDialogProps {
@@ -3261,20 +3324,21 @@ export interface DashboardStatsProps {
    * `empty` "seçilen tarih aralığında veri yok" demektir ve `error`'dan ayrı
    * durur: biri aralığı genişletmeyi, öteki tekrar denemeyi yaptırır.
    *
-   * **Brifing 2.2'nin üç verisi bu pakette YOK ve bu ekranda gösterilemiyor**
-   * (`DashboardMetrics` `types/domain.ts`'te ve fiilen FastAPI'nin şartnamesi —
-   * bilerek dokunulmadı, RAPOR EDİLDİ):
-   * - "En uzun süredir bekleyen ilanlar" — liste kanalı yok, yalnız
-   *   `pendingReviewCount` sayısı var.
-   * - "Son moderasyon işlemleri" — `ModerationEvent[]` kanalı yok.
-   * - "Moderatör bazında işlem hacmi; yalnızca yetkili rollere" — ne veri kanalı
-   *   var ne de kimin görebileceğini söyleyecek bir izin listesi
-   *   (`availablePermissions`, ki `ListingListPageProps` ve
-   *   `UserManagementPageProps`'ta var).
+   * **Brifing 2.2'nin üç verisi Faz 3 sonrası (b) turunda `DashboardMetrics`'e
+   * eklendi ve artık gösteriliyor** (hepsi opsiyonel, backend gelince kesinleşir):
+   * - `longestWaitingListings` — "en uzun süredir bekleyen ilanlar".
+   * - `recentModerationEvents` — "son moderasyon işlemleri".
+   * - `moderatorVolume` — "moderatör bazında işlem hacmi". Yetki kapısı: brifing
+   *   "yalnızca yetkili rollere" diyor ama ekranın `availablePermissions`'ı yok;
+   *   blok verildiğinde gösterilir, verip vermemeye **sayfa katmanı** karar verir
+   *   (Faz 4). "Yetki kontrolü component'in işi değil" kuralının doğal sonucu.
+   * - `dailyApprovals`/`dailyRejections` — `dailyModerationCount`'un onay/red
+   *   ayrımı; brifingin istediği "onay/red sayısı" grafiği artık çizilebiliyor.
+   *   Ayrışmamış toplam serisi de duruyor (biri toplam, biri ayrım).
    *
-   * Ayrıca `dailyModerationCount` **ayrışmamış tek bir seri**: brifingin istediği
-   * "günlük ve haftalık **onay/red** sayısı"ndaki onay-red ayrımı çizilemiyor.
-   * Haftalık kırılım günlükten toplanabilir, onay/red ayrımı toplanamaz.
+   * Kalan tek kanalsız istek: kategori/işlem türü/moderatör **filtreleri**
+   * (`dateRange` dışında) — `DashboardMetrics` o kırılımları taşımadığı için
+   * uygulanamıyor (bkz. `dateRange`).
    */
   state: AsyncState<DashboardMetrics>
   /**
@@ -3471,6 +3535,25 @@ export interface ListingFilterValues {
  *
  * **Kabuk değil, içerik** ve **veri çekmez** — bkz. `DashboardStatsProps`.
  */
+/**
+ * İlan listesi filtrelerinin **seçenek kaynakları** (Faz 3 sonrası (b) turunda
+ * eklendi). Ekran bunları veriden türetemez (bkz. `ListingListPageProps.filterOptions`).
+ *
+ * Her alan opsiyonel: yalnız verilen filtreler seçenekli render edilir. Değerler
+ * `SelectOption` (`value` + görünür `label`), yani `districtId`/`reviewerId` gibi
+ * UUID'ler `label`'la eşlenmiş gelir — filtre adı gösterir, id gönderir.
+ */
+export interface ListingFilterOptions {
+  /** İl seçenekleri (`ListingFilterValues.cityCode`). */
+  cities?: SelectOption[]
+  /** İlçe seçenekleri (`districtId`). Seçili ile göre süzülmüş gelebilir. */
+  districts?: SelectOption[]
+  /** Mahalle seçenekleri (`neighborhoodId`). */
+  neighborhoods?: SelectOption[]
+  /** İnceleyen moderatör seçenekleri (`reviewerId`); `label` adminin adı. */
+  reviewers?: SelectOption[]
+}
+
 export interface ListingListPageProps {
   /**
    * Listenin durumu.
@@ -3523,6 +3606,27 @@ export interface ListingListPageProps {
    * Ters sıra `superAdmin`'e daraltılmış görünüm verir.
    */
   availablePermissions: AdminPermission[]
+  /**
+   * Filtre **seçenek kaynakları**: il/ilçe/mahalle ve inceleyen moderatör listeleri
+   * (Faz 3'te kanalsızdı → bu filtreler seçenek üretemiyordu, RAPOR EDİLMİŞTİ).
+   *
+   * Ekran seçenekleri `state.data.items`'tan **türetemez** — süzülmüş liste yalnız
+   * o sayfadaki değerleri içerir ve filtreledikçe seçenekler daralırdı. Sunucu
+   * (ya da statik il/ilçe verisi) tam listeyi verir; sayfa katmanı doldurur.
+   * Verilmezse o filtreler render edilmez (seçeneği olmayan filtre sunmak
+   * `SearchInput`'un bağlanmamış `onClear`'ı gibi sessiz bir bozukluktur).
+   *
+   * **Backend gelince kesinleşir:** il/ilçe/mahalle hiyerarşisinin tam şekli
+   * (kademeli mi, düz mü) sunucunun kararı.
+   */
+  filterOptions?: ListingFilterOptions
+  /**
+   * Sıralama değiştiğinde çalışır (Faz 3'te kanalsızdı → hiçbir kolon `sortable`
+   * değildi). Opsiyonel; `sort` ile birlikte. `DataTableProps.onSortChange`.
+   */
+  onSortChange?: DataTableProps<Listing>['onSortChange']
+  /** Aktif sıralama; `DataTableProps.sort`'a geçer. Opsiyonel. */
+  sort?: DataTableProps<Listing>['sort']
   /**
    * Bir filtre değiştiğinde **birleştirilmiş** yeni değerle çalışır (fark değil,
    * son hâl) — `AttributeEditorProps.onChange` ile aynı kalıp.
@@ -3681,8 +3785,50 @@ export interface ApprovalQueueProps {
    * damgası yok.
    */
   onSkip: (listingId: string) => void
-  /** Detaylı inceleme ekranını açar; kuyruğun karar akışına tek çıkışı (bkz. tip JSDoc'u). */
+  /** Detaylı inceleme ekranını açar; kararın **tam** akışına çıkış. */
   onOpenDetail: (listingId: string) => void
+  /**
+   * Süren hızlı kararın adı; brifing 2.4'ün "karar" akışı kuyrukta da mümkün.
+   *
+   * `ListingReviewPanelProps.submittingAction` ile birebir aynı desen ve aynı
+   * indeksleme (`ModerationActionBarProps['submittingAction']`): seçili ilanın
+   * karar çubuğunda o butonda spinner çıkar, diğerleri kapanır. Yokluğu bir durum
+   * → `meta.args`'a konmaz.
+   */
+  submittingAction?: ModerationActionBarProps['submittingAction']
+  /**
+   * Reddedilen hızlı kararın sebebi; **brifing 3.5'in zorunlu `Conflict` story'si
+   * artık bu ekranda ifade edilebiliyor** (Faz 3'te kanalsızdı, RAPOR EDİLMİŞTİ).
+   *
+   * Faz 3'te ayrık bir sorundu: kuyruk karar göndermiyordu, dolayısıyla revizyon
+   * çakışması burada **doğamıyordu**. Kuyruğa hızlı karar handler'ları
+   * (`onApprove`/`onReject`/`onRequestChanges` — brifing 2.4) eklenince çakışma da
+   * anlamlı hâle geldi: seçili ilana verilen hızlı karar, başka moderatör onu bu
+   * arada düzenlediyse reddedilir. `ListingReviewPanelProps.decisionError` ile
+   * birebir aynı (`ModerationActionBarProps['decisionError']`); `state` ile aynı
+   * eksende değil (ilan yüklüyken karar reddedilebilir).
+   *
+   * `revisionConflict`'te tekrar deneme butonu **yok** — aynı damga aynı çakışmayı
+   * verir; doğru eylem ilanı `onOpenDetail` ile açıp yeniden bakmak.
+   */
+  decisionError?: ModerationActionBarProps['decisionError']
+  /**
+   * Hızlı onay — seçili ilanın karar çubuğuna geçer (brifing 2.4 "hızlı onay").
+   *
+   * **Opsiyonel, çünkü kuyruğun birincil çıkışı `onOpenDetail`'dir**: hızlı karar
+   * bir hızlandırmadır, zorunluluk değil. Verilmezse o eylem **hiç görünmez**
+   * (reponun "handler yoksa buton yok" kuralı) ve kuyruk yalnız detaya yönlendirir
+   * — Faz 3'ün davranışı, geriye dönük uyumlu. `capabilities.canApprove` ile
+   * **birlikte** verilmeli: iki kapı birden açılmadan buton çıkmaz.
+   *
+   * Çubuk doğrudan çağırmaz; dialog açıp gerekçe/not toplar
+   * (`ListingReviewPanelProps.onApprove` ile aynı sözleşme).
+   */
+  onApprove?: ModerationActionBarProps['onApprove']
+  /** Hızlı red. Opsiyonel; `onApprove` ile aynı gerekçe ve sözleşme. */
+  onReject?: ModerationActionBarProps['onReject']
+  /** Hızlı düzeltme isteği. Opsiyonel; `onApprove` ile aynı gerekçe ve sözleşme. */
+  onRequestChanges?: ModerationActionBarProps['onRequestChanges']
   /** Hata bloğundaki "tekrar dene" butonu. `ListingListPageProps.onRetry` ile aynı gerekçe. */
   onRetry: () => void
 }
@@ -3697,14 +3843,12 @@ export interface ApprovalQueueProps {
  * `DashboardStatsProps.state`): orada düşen bir grafik ötekileri ayakta bırakır,
  * burada eksik bir parça kararın kendisini geçersiz kılar.
  *
- * **Brifing 2.5'in beş verisi bu pakette yok** (imzalar donduruldu, RAPOR
- * EDİLDİ): benzer/mükerrer ilan önerileri, admin notları, revizyon geçmişi
- * (yalnız **bir** önceki revizyon var, bkz. `previousRevision`), önceki/sonraki
- * kuyruk ilanı ve — en sivrisi — `UserSanction`. Sonuncusu bir sonraki panelin
- * boşluğuna dönüşüyor: `SellerPanelProps.sanctions` ve
- * `UserSummaryCardProps.activeSanction` beslenemediği için `SellerPanel`'in
- * `risk` varyantı bu ekranda **yaptırım geçmişini gösteremiyor**, oysa şüpheli
- * ilan incelenirken sorulan soru tam olarak odur.
+ * **Faz 3 sonrası (b) turunda eklenen kanallar:** `sanctions` (SellerPanel'in
+ * `risk` varyantı artık yaptırım geçmişini gösterebiliyor), `revisionHistory`
+ * (tam geçmiş, yalnız _n-1_ değil), `adminNotes`, `similarListings`. `Listing`
+ * taşıyan üçü **backend gelince kesinleşir** diye işaretli — `domain.ts` FastAPI
+ * şartnamesi. Önceki/sonraki kuyruk ilanı navigasyonu `ListingReviewPanelProps`'ta
+ * (`onPreviousListing`/`onNextListing`).
  */
 export interface ListingReviewData {
   /**
@@ -3756,12 +3900,52 @@ export interface ListingReviewData {
    * Opsiyonel çünkü yokluğu bir durum: ilk kez incelenen ilanın öncesi yoktur.
    * Verilmezse `comparison` tek sütuna düşer, çökmez.
    *
-   * **Tek bir revizyon, geçmiş değil.** Brifing 2.5 "revizyon geçmişi" ve
-   * "revizyonlar arasında karşılaştırma" istiyor; bu alan yalnız _n-1_'i
-   * taşıyor, dolayısıyla iki eski revizyonu karşılaştırmak bu ekranda mümkün
-   * değil (`Listing[]` gerekirdi). RAPOR EDİLDİ.
+   * `revisionHistory` (aşağıda) verilirse bu alanın işini o üstlenir; ikisi de
+   * verilirse `revisionHistory` kazanır.
    */
   previousRevision?: Listing
+  /**
+   * İlanın **tam** revizyon geçmişi; brifing 2.5'in "revizyon geçmişi" ve
+   * "revizyonlar arasında karşılaştırma" verisi (Faz 3'te yalnız _n-1_ vardı,
+   * RAPOR EDİLMİŞTİ).
+   *
+   * En yeni **başta**, en eski sonda. İki eski revizyonu karşılaştırmak artık
+   * mümkün. `previousListing`'e geçirilecek olan `[1]` (bir önceki). Opsiyonel:
+   * verilmezse ekran `previousRevision`'a düşer (Faz 3 davranışı).
+   *
+   * **Backend gelince kesinleşir:** revizyonun tam `Listing` mi yoksa yalnız
+   * değişen alanların bir özeti mi taşınacağı sunucunun kararı; şimdilik tam
+   * `Listing[]` (fixture bu şekilde doldurulabilir).
+   */
+  revisionHistory?: Listing[]
+  /**
+   * Yürürlükteki **ve** kaldırılmış yaptırımlar; `SellerPanelProps.sanctions`'a
+   * ve `UserSummaryCardProps.activeSanction`'a bağlanır (Faz 3'te kanalsızdı, RAPOR
+   * EDİLMİŞTİ — `SellerPanel`'in `risk` varyantı bu ekranda yaptırım geçmişini
+   * gösteremiyordu, oysa şüpheli ilan incelenirken sorulan tam olarak o).
+   *
+   * `seller`'a aittir (`userId === seller.id`). `UserSanction.reason` iç gerekçe;
+   * sayfa katmanı yetkiye göre `risk` varyantına verir ya da vermez. Opsiyonel.
+   */
+  sanctions?: UserSanction[]
+  /**
+   * İlan sahibinin **notları / admin notları** (brifing 2.5: "admin notları";
+   * Faz 3'te kanalsızdı, RAPOR EDİLMİŞTİ).
+   *
+   * Moderatörlerin ilana iliştirdiği serbest metin notlar, en yeni başta.
+   * Opsiyonel; boş dizi "not yok". **Backend gelince kesinleşir:** notun yapısı
+   * (yazar, zaman, metin) sunucunun kararı — şimdilik `AdminNote`.
+   */
+  adminNotes?: AdminNote[]
+  /**
+   * Benzer / mükerrer ilan önerileri (brifing 2.5; Faz 3'te kanalsızdı, RAPOR
+   * EDİLMİŞTİ).
+   *
+   * Bir mükerrer-tespit sisteminin döndürdüğü aday ilanlar; "yeni sekmede aç"
+   * eylemi bunlara uygulanır. Opsiyonel. **Backend gelince kesinleşir:** benzerlik
+   * skoru taşınıp taşınmayacağı sunucunun kararı — şimdilik düz `Listing[]`.
+   */
+  similarListings?: Listing[]
 }
 
 /**
@@ -3878,6 +4062,30 @@ export interface ListingReviewPanelProps {
    * kasıt.
    */
   onRetry: () => void
+  /**
+   * Bir fotoğrafı tekil olarak uygunsuz işaretler (brifing 2.5: "fotoğrafı tekil
+   * olarak uygunsuz işaretleme"; Faz 3'te kanalsızdı → galeri salt okunurdu, RAPOR
+   * EDİLMİŞTİ).
+   *
+   * `ImageGalleryProps`'un fotoğraf moderasyon eylemine bağlanır. Opsiyonel:
+   * verilmezse galeri salt okunur kalır (Faz 3 davranışı). `capabilities`'e göre
+   * kapılanır — fotoğraf reddetmek bir moderasyon eylemidir.
+   */
+  onPhotoModerate?: (photoId: string, appropriate: boolean) => void
+  /**
+   * Önceki / sonraki kuyruk ilanına geçiş (brifing 2.5). Opsiyonel: kuyruk
+   * bağlamı dışında (ör. şikayet detayından gelince) verilmez → butonlar çıkmaz.
+   * Hangi ilanın önceki/sonraki olduğunu kuyruğun sahibi bilir; ekran yalnız niyeti
+   * bildirir.
+   */
+  onPreviousListing?: () => void
+  /** Sonraki kuyruk ilanı; `onPreviousListing` ile aynı gerekçe. */
+  onNextListing?: () => void
+  /**
+   * Benzer bir ilanı yeni sekmede açar (brifing 2.5). `ListingReviewData.similarListings`
+   * ile birlikte anlamlı; verilmezse öneriler salt okunur görünür.
+   */
+  onOpenSimilar?: (listingId: string) => void
 }
 
 /**
@@ -3959,31 +4167,39 @@ export interface UserManagementPageProps {
   onPageChange: (page: number) => void
   /** Bir satıra tıklandığında çalışır; kullanıcı detayına götürür. */
   onUserOpen: (user: UserAccount) => void
+  /** Sıralama değiştiğinde çalışır (Faz 3'te kanalsızdı → hiçbir kolon `sortable`
+   * değildi). Opsiyonel; `sort` ile birlikte verilir. `DataTableProps.onSortChange`. */
+  onSortChange?: DataTableProps<UserAccount>['onSortChange']
+  /** Aktif sıralama; `DataTableProps.sort`'a geçer. Opsiyonel. */
+  sort?: DataTableProps<UserAccount>['sort']
   /**
    * "Askıya al" eylemine basıldığında çalışır; brifing 2.6'nın `banPending`
    * ailesinden.
    *
-   * **Yaptırımın kendisini toplamıyor**: askı süresi (`UserSanction.endsAt`) ve
-   * gerekçesi (`reason`) bu imzada yok — `ModerationDecisionPayload`'ın
-   * moderasyon kararı için yaptığını yaptırım için yapan bir yük tipi
-   * sözleşmede tanımlı değil. Dolayısıyla gerekçe/süre soran dialog'u ve yükü
-   * **çağıran** kurar; ekran yalnız niyeti bildirir. RAPOR EDİLDİ.
-   *
-   * Onaylatma da çağıranın işi: yaptırım geri alınabilir ama ucuz değil.
+   * `SanctionInput` opsiyonel ikinci argümanla toplanabiliyor (Faz 3'te alansızdı,
+   * RAPOR EDİLMİŞTİ); geriye dönük uyum için opsiyonel — `onSuspend(user)` hâlâ
+   * derlenir. Gerekçe/süre soran dialog'u çağıran kurar; onaylatma da çağıranın işi.
    */
-  onSuspend: (user: UserAccount) => void
-  /** "Yasakla". `onSuspend` ile aynı boşluk: gerekçe ve kalıcılık bu imzada yok. */
-  onBan: (user: UserAccount) => void
+  onSuspend: (user: UserAccount, input?: SanctionInput) => void
+  /** "Yasakla". `onSuspend` ile aynı; ban süresiz olduğu için `SanctionInput.durationDays` verilmez. */
+  onBan: (user: UserAccount, input?: SanctionInput) => void
   /**
    * Rol ataması; yalnız `superAdmin` (brifing 2.6).
    *
-   * Brifing 2.6 `roleChangeConflict`'i bir ekran durumu sayıyor ama sözleşmede
-   * karşılığı **yok**: `ModerationDecisionError`'ın kullanıcı tarafındaki
-   * eşleniği (ve `expectedRevision` gibi bir damga) tanımlı değil — iki
-   * superAdmin aynı hesabın rolünü aynı anda değiştirirse son yazan kazanır ve
-   * ekran bunu fark edemez. RAPOR EDİLDİ.
+   * `expectedRoleVersion` opsiyonel üçüncü argümanla iyimser kilit:
+   * `roleChangeConflict` (brifing 2.6) artık ifade edilebiliyor — iki superAdmin
+   * aynı hesabın rolünü aynı anda değiştirirse damga uyuşmaz. Sonucu `roleChangeError`
+   * taşır. Opsiyonel argüman → geriye dönük uyum.
    */
-  onRoleChange: (user: UserAccount, role: AdminRole) => void
+  onRoleChange: (user: UserAccount, role: AdminRole, expectedRoleVersion?: number) => void
+  /**
+   * Rol değişikliği reddedildi (`roleChangeConflict`, brifing 2.6).
+   * `ModerationDecisionError` ailesinden; `state`'ten ayrı. Hangi kullanıcının rol
+   * değişikliğinin düştüğünü `userId` taşır.
+   *
+   * @default undefined
+   */
+  roleChangeError?: { userId: string; error: UiError }
   /** Hata bloğundaki "tekrar dene" butonu. `ListingListPageProps.onRetry` ile aynı gerekçe. */
   onRetry: () => void
 }
@@ -4002,21 +4218,52 @@ export interface UserManagementPageProps {
  * de sınamalı: veri geldi diye render etmek, izin kapısını sunucunun iyi
  * niyetine bırakmak olur.
  */
+/**
+ * Bir yaptırım eyleminin (askıya alma / yasaklama) topladığı yük; brifing 2.6'nın
+ * yaptırıma süre ve gerekçe iliştirme gereği.
+ *
+ * `UserSanction`'ın **istemci tarafı**: `id`/`createdByAdminId`/`createdAt`'i
+ * sunucu üretir, istemci yalnız gerekçeyi ve (askıda) süreyi toplar.
+ */
+export interface SanctionInput {
+  /** İç gerekçe metni; `UserSanction.reason` olur. Zorunlu — gerekçesiz yaptırım denetlenemez. */
+  reason: string
+  /**
+   * Askı süresi, gün. Yasaklamada verilmez (ban süresiz — `endsAt` yok).
+   * Askıda zorunlu: süresiz askı bir bandır, kavramsal olarak farklı.
+   */
+  durationDays?: number
+}
+
 export interface UserDetailData {
   /**
    * Hesabın kendisi; `UserSummaryCardProps.user`'a geçirilir.
    *
-   * **`UserSanction` taşımıyor.** `user.status` yaptırımın *olduğunu* söylüyor
-   * ama "neden" ve "ne zamana kadar" sözleşmede yok, dolayısıyla
-   * `UserSummaryCardProps.activeSanction` bu ekranda **beslenemiyor** ve kart
-   * yaptırımın yalnız tipini `status`'ten türetip gerisini susarak geçiyor.
-   * Oysa brifing 2.6 "aktif yaptırım"ı gösterilecek veri sayıyor ve
-   * `fixtures/users.ts` `activeSuspensionSanction`'ı `endsAt` ile yazdı — "askı
-   * 29 Tem'de bitiyor" yaptırım kararı verilirken tam olarak bakılan bilgi.
-   * `activeSanction?: UserSanction` (ve geçmiş için `sanctions`) gerekirdi;
-   * imzalar donduruldu, RAPOR EDİLDİ.
+   * `user.status` yaptırımın *olduğunu* söyler; "neden" ve "ne zamana kadar"ı
+   * `activeSanction` taşır (aşağıda, Faz 3 sonrası (b) turunda eklendi).
    */
   user: UserAccount
+  /**
+   * Yürürlükteki yaptırım; `UserSummaryCardProps.activeSanction`'a geçer (Faz 3'te
+   * kanalsızdı, RAPOR EDİLMİŞTİ).
+   *
+   * Brifing 2.6 "aktif yaptırım"ı gösterilecek veri sayıyor. Kart alanları
+   * varyanta göre açıyor ve bu bir **yetki sınırı**: `detailed` (destek'in yüzü)
+   * yalnız tip + `endsAt`, `security` ayrıca `reason` + `startsAt` +
+   * `createdByAdminId`. Verilmezse kart Faz 3 davranışına düşer (tipi `status`'ten
+   * türetir, gerisini susar). `revokedAt` dolu kayıt buraya konmaz — "yürürlükteki"
+   * değildir; geçmiş `sanctions`'a aittir.
+   */
+  activeSanction?: UserSanction
+  /**
+   * Hesabın yaptırım **geçmişi** (yürürlükteki + kaldırılmış). `SellerPanel`'in
+   * `risk` varyantına ve `UserSummaryCard`'ın `security` görünümüne bağlanabilir.
+   *
+   * `UserSanction.reason` iç gerekçe metnidir — `destek` (`UserViewProfile`)
+   * görmemeli; sayfa katmanı `availablePermissions`'a göre bu paketi ya hiç
+   * göstermez ya `security`/`risk` varyantına verir.
+   */
+  sanctions?: UserSanction[]
   /**
    * Kullanıcının ilanları (brifing 2.6: "kullanıcı ilanlarını açma").
    *
@@ -4097,20 +4344,41 @@ export interface UserDetailPageProps {
   /** Kullanıcının ilanlarından birine tıklandığında çalışır; ilan detayına götürür. */
   onListingOpen: (listing: Listing) => void
   /**
+   * `UserDetailData.listings`'in sayfasını değiştirir (Faz 3'te kanalsızdı, RAPOR
+   * EDİLMİŞTİ — bir emlak ofisinin yüzlerce ilanı olabilir, ilk sayfa gösteriliyor
+   * ama ikincisine geçilemiyordu).
+   *
+   * Opsiyonel: verilmezse ilanlar sekmesi tek sayfa gösterir (Faz 3 davranışı).
+   * 1-tabanlı; yeni sayfayı çekmek çağıranın işi.
+   */
+  onListingsPageChange?: (page: number) => void
+  /**
    * "Askıya al". Argümansız — `UserManagementPageProps.onSuspend`'in aksine:
    * detay ekranında hangi hesap olduğu zaten tek ve `state.data.user`'da.
    *
-   * Yaptırımın süresi ve gerekçesi bu imzada da yok; dialog'u ve yükü çağıran
-   * kurar (aynı boşluk, RAPOR EDİLDİ).
+   * `SanctionInput` alıyor: süre ve gerekçe artık toplanabiliyor (Faz 3'te alansızdı,
+   * RAPOR EDİLMİŞTİ). Argüman **opsiyonel** — geriye dönük uyum: `onSuspend()`
+   * çağrısı hâlâ derlenir, dialog'u açıp yükü toplamak çağıranın işi.
    */
-  onSuspend: () => void
-  /** "Yasakla". `onSuspend` ile aynı; onaylatma çağıranın işi. */
-  onBan: () => void
+  onSuspend: (input?: SanctionInput) => void
+  /** "Yasakla". `onSuspend` ile aynı; ban süresiz olduğu için `SanctionInput.durationDays` verilmez. */
+  onBan: (input?: SanctionInput) => void
   /**
-   * Rol ataması; yalnız `superAdmin` (brifing 2.6). `roleChangeConflict` için
-   * kanal yok — `UserManagementPageProps.onRoleChange`'e bakın.
+   * Rol ataması; yalnız `superAdmin` (brifing 2.6).
+   *
+   * `expectedRoleVersion` ile iyimser kilit: `roleChangeConflict`
+   * (`UserManagementPageProps.onRoleChange`'e bakın) artık ifade edilebiliyor.
+   * Opsiyonel ikinci argüman geriye dönük uyum için.
    */
-  onRoleChange: (role: AdminRole) => void
+  onRoleChange: (role: AdminRole, expectedRoleVersion?: number) => void
+  /**
+   * Rol değişikliği reddedildi (`roleChangeConflict`, brifing 2.6). Başka bir
+   * superAdmin bu arada rolü değiştirdiyse `expectedRoleVersion` uyuşmaz.
+   * `ModerationDecisionError` ile aynı aile; `state`'ten ayrı.
+   *
+   * @default undefined
+   */
+  roleChangeError?: UiError
   /**
    * Hata bloğundaki "tekrar dene" butonu.
    *
@@ -4119,6 +4387,26 @@ export interface UserDetailPageProps {
    */
   onRetry: () => void
 }
+
+/**
+ * Bir kategori yayınının **reddedilme** sebebi; `ModerationDecisionError`'ın
+ * kategori karşılığı.
+ *
+ * `AsyncState`'in üyesi değil ve olmamalı — aynı gerekçe: `AsyncState` "ağaç geldi
+ * mi", bu "gönderdiğim yayın uygulandı mı" sorusunu cevaplıyor.
+ *
+ * - `revisionConflict`: başka admin bu arada aynı kategoriyi yayınladı; taban
+ *   revizyonu değişti. Tekrar denemek doğru değil (aynı taslak aynı çakışmayı
+ *   verir), doğru eylem yeniden yükleyip taslağı gözden geçirmek.
+ * - `validation`: sunucu alan hatası döndürdü; ayrıntı
+ *   `CategoryAttributePageProps.editorValidationErrors`'ta.
+ * - `failed`: geçici/bilinmeyen sunucu hatası; `retryable` tekrar denemenin
+ *   anlamlı olup olmadığını söyler.
+ */
+export type CategoryPublishError =
+  | { kind: 'revisionConflict'; message: string }
+  | { kind: 'validation'; message: string }
+  | { kind: 'failed'; error: UiError }
 
 /** Kategori ve öznitelik yönetimi ekranının veri paketi (brifing 2.7). */
 export interface CategoryAttributePageData {
@@ -4163,12 +4451,12 @@ export interface CategoryAttributePageData {
  *
  * **Kabuk değil, içerik** ve **veri çekmez** — bkz. `DashboardStatsProps`.
  *
- * Kanalı olmayan brifing 2.7 istekleri (imzalar donduruldu, RAPOR EDİLDİ):
- * `publishPending` ve `conflict` durumları (3.5 `Conflict`'i **zorunlu story**
- * sayıyor ama sözleşmede karşılığı yok), "yayın öncesi etkilenen ilan sayısını
- * görüntüleme", önizleme ve — `dirty`/`saving` gibi diğerlerinin aksine — kimin
- * düzenleyebileceğini söyleyecek bir izin listesi (`availablePermissions`;
- * `category:manage` kapısı bu ekranda kurulamıyor).
+ * **Faz 3 sonrası (b) turunda kapatılan boşluklar:** `publishing`
+ * (`publishPending`), `publishError` (`conflict` — 3.5'in zorunlu `Conflict`
+ * story'si), `editorValidationErrors` (`validationError`), `affectedListingCount`
+ * ("yayın öncesi etkilenen ilan sayısı") ve `availablePermissions`
+ * (`category:manage` kapısı). Kalan tek kanalsız istek **önizleme** (brifing 2.7):
+ * taslağı canlı formda göstermek ayrı bir render yüzeyi ister, sözleşmede yok.
  */
 export interface CategoryAttributePageProps {
   /**
@@ -4184,6 +4472,17 @@ export interface CategoryAttributePageProps {
    * `AttributeEditorProps.validationErrors`.
    */
   state: AsyncState<CategoryAttributePageData>
+  /**
+   * Kullanıcının izinleri; `category:manage` kapısının anahtarı (Faz 3'te
+   * kanalsızdı, RAPOR EDİLMİŞTİ).
+   *
+   * `category:manage` yalnız `superAdmin`'de (brifing 1.4). İzni olmayana editör
+   * **`readOnly`** verilir ya da düzenleme eylemleri (ekle/kaydet/yayınla) hiç
+   * render edilmez — kilitli (`disabled`) editör değil (o "şu an değiştirilemez"
+   * demek, "yetkin yok" değil). Verilmezse ekran salt okunur davranır — sonuçsuz
+   * buton sunmaz.
+   */
+  availablePermissions?: AdminPermission[]
   /**
    * Editördeki taslak; `AttributeEditorProps.value`'ya geçirilir.
    *
@@ -4230,6 +4529,55 @@ export interface CategoryAttributePageProps {
    * @default false
    */
   saving?: boolean
+  /**
+   * Yayınlama sürüyor; brifing 2.7'nin `publishPending` durumu.
+   *
+   * `saving`'den ayrı: `saving` taslağı kaydediyor (`onSave`), bu yayınlıyor
+   * (`onPublish`) — ikincisi yayındaki ilanların form şemasını değiştirdiği için
+   * kullanıcının hangisinin sürdüğünü ayırt etmesi gerekir.
+   *
+   * @default false
+   */
+  publishing?: boolean
+  /**
+   * Yayınlama reddedildi; brifing 2.7'nin `conflict` durumu ve **3.5'in zorunlu
+   * `Conflict` story'si** (Faz 3'te kanalsızdı, RAPOR EDİLMİŞTİ).
+   *
+   * `ModerationDecisionError` ile aynı aile ve aynı gerekçeyle `state`'ten ayrı:
+   * ağaç sorunsuz yüklüyken (`status: 'success'`) yayınlama düşebilir — başka bir
+   * admin bu arada aynı kategoriyi yayınladıysa taban revizyonu artmıştır. `state`
+   * ile aynı eksende olsalardı, reddedilen yayın ekrandaki ağacı hata bloğuna
+   * çevirirdi.
+   *
+   * `revisionConflict`'te tekrar deneme **doğru değil**: aynı taslak aynı
+   * çakışmayı verir; doğru eylem `onRetry` ile yeniden yükleyip taslağı yeni
+   * tabana göre gözden geçirmek. `validation` ise sunucunun reddettiği alan
+   * hataları — `AttributeEditorProps.validationErrors`'a `editorValidationErrors`
+   * ile ayrıca akar; bu bayrak yalnız "yayın düştü" üst durumunu taşır. Taslak
+   * (`editorValue`) korunur.
+   *
+   * @default undefined (yayın reddedilmedi)
+   */
+  publishError?: CategoryPublishError
+  /**
+   * Öznitelik editörünün alan hataları; brifing 2.7'nin `validationError` durumu.
+   *
+   * `AttributeEditorProps.validationErrors`'a doğrudan geçer. Ekran doğrulamayı
+   * **yapmaz** (benzersiz `key` gibi kurallar sunucuyu gerektirir); sunucunun
+   * `onSave`/`onPublish` sonrası döndürdüğü hataları taşır. Faz 3'te editör bu
+   * prop'a sahipti ama besleyecek kanal yoktu (RAPOR EDİLMİŞTİ) — artık var.
+   */
+  editorValidationErrors?: Record<string, string>
+  /**
+   * Taslak yayınlanırsa etkilenecek ilan sayısı; brifing 2.7'nin "yayın öncesi
+   * etkilenen ilan sayısı" verisi (Faz 3'te kanalsızdı, RAPOR EDİLMİŞTİ).
+   *
+   * Onay dialog'u artık "bu değişiklik 1.284 ilanı etkileyecek" diyebilir. Ekran
+   * **saymaz** — hangi ilanların bu şemaya bağlı olduğunu sunucu bilir; seçili
+   * düğümün `count`'u yanlış cevaptır (o kategorideki toplam ilan, şemadan
+   * etkilenen değil). Verilmezse dialog genel uyarıyla yetinir.
+   */
+  affectedListingCount?: number
   /** Ağaçta bir düğüme tıklandığında çalışır. Yeni öznitelikleri çekmek çağıranın işi. */
   onNodeSelect: (id: string) => void
   /**
@@ -4322,6 +4670,46 @@ export interface ReportManagementPageProps {
   state: AsyncState<Paginated<ListingReport>>
   /** Filtrelerin güncel değeri; kontrollü ve zorunlu. `empty`'nin varyantını bu belirler. */
   filters: ReportFilterValues
+  /**
+   * Kullanıcının izinleri; triage kademesinin kapısı (Faz 3'te kanalsızdı, RAPOR
+   * EDİLMİŞTİ — diğer liste ekranlarında vardı, burada yoktu).
+   *
+   * `report:triage` **tam** (sınıflandırma + `severity` + `assignedAdminId`),
+   * `report:triageLimited` **sınırlı** (okur, sınıflandırır, eskale eder), `report:resolve`
+   * ayrı. **Kademeler kapsayıcı** — önce `ReportTriage`'ı sına, sonra
+   * `ReportTriageLimited`'a düş; ters sıra `superAdmin`'e daraltılmış görünüm verir.
+   * Yetkisiz eylem `disabled` verilmez, hiç render edilmez. Verilmezse ekran
+   * eylemleri yalnız `report.status`'e göre kapılar (Faz 3 davranışı).
+   */
+  availablePermissions?: AdminPermission[]
+  /**
+   * "Şimdi" — `ReportCard`'ın `queue` varyantındaki bekleme süresi bundan
+   * hesaplanır (Faz 3'te kanalsızdı, RAPOR EDİLMİŞTİ; kart saati kendi okuyamaz).
+   *
+   * Verilmezse kartlar mutlak tarih gösterir (kartın belgelenmiş yedeği). Sayfa
+   * katmanı bir kez okuyup bütün karta geçirir; story sabit bir değer verir —
+   * `new Date()` deterministik fixture'ı bozar.
+   */
+  now?: ISODateTime
+  /**
+   * Kullanıcı çözümleme sözlüğü: `report.reporterUserId` / `assignedAdminId` →
+   * `UserAccount` (Faz 3'te ad çözümleme paketi yoktu, RAPOR EDİLMİŞTİ).
+   *
+   * `ReportCard.reporter` ve `assignedAdmin` `UserAccount` bekliyor ama ekran veri
+   * çekmez; sayfa katmanı şikayetlerin kullanıcılarını ayrı sorguyla getirip bu
+   * sözlüğü doldurur. Eksik id "Bilinmiyor" olarak görünür, kart çökmez. `AdminUser`
+   * diye ayrı bir tip **yok** — admin de `UserAccount`, `adminRole`'ü dolu.
+   */
+  usersById?: Record<string, UserAccount>
+  /**
+   * İlan çözümleme sözlüğü: `report.listingId` → `Listing` (brifing 2.8'in "ilan
+   * özeti" ve "ilanın mevcut durumu" verileri; Faz 3'te beslenemezdi).
+   *
+   * `ReportCard.listing`'e geçer. Silinmiş ilan sözlükte yoktur → kart yalnız
+   * `listingId`'yi gösterir (eksik bağlam, kırık başvuru değil — `linkedListingUnavailable`
+   * durumu böyle ifade edilir).
+   */
+  listingsById?: Record<string, Listing>
   /** Bir filtre değiştiğinde birleştirilmiş yeni değerle çalışır (fark değil, son hâl). */
   onFiltersChange: (filters: ReportFilterValues) => void
   /** Sayfa değiştiğinde 1-tabanlı yeni sayfa ile çalışır. */
@@ -4367,18 +4755,22 @@ export type ThemeName = 'corporate-blue' | 'neutral-slate' | 'warm-amber'
  *
  * **Kabuk değil, içerik** — bkz. `DashboardStatsProps`.
  *
- * **`state: AsyncState` YOK ve bu ekranın en sivri boşluğu** (RAPOR EDİLDİ):
- * brifing 3.5 `Loading` ve `Unauthorized`'ı bu ekran için **zorunlu story**
- * sayıyor ama izinlerin ve temanın yüklenme/hata/403 durumunu taşıyacak bir
- * kanal yok — `rolePermissions` zorunlu, dolayısıyla "henüz gelmedi" ifade
- * edilemiyor ve `Loading` story'si **yazılamıyor**. `canManagePermissions`
- * yalnız düzenleme kapısı; sunucunun 403'ü ile aynı şey değil.
+ * **`state: AsyncState` yok — bilerek.** Ayarlar tek bir sorgu değil; izinler,
+ * tema ve (ileride) moderasyon tercihleri ayrı kanallar. Faz 3'te bu, `Loading`
+ * story'sinin yazılamamasına yol açıyordu; (b) turunda **`loading` bayrağı**
+ * eklendi — reponun `StatCard`/`DataTable`/`RolePermissionMatrix.saving`
+ * kalıbıyla aynı (her zaman var olan prop'un üstünde yükleme bayrağı). Kabuk
+ * yüklenirken iskelet gösterilir, veri prop'ları (yer tutucu) yok sayılır.
  *
- * Kanalı olmayan diğer brifing 2.9 istekleri: moderasyon tercihleri, ilan
- * süreleri, sayfalama varsayılanları, audit özeti (hepsi "görünen veri") ve
- * `permissionConflict` durumu — `RolePermissionMatrixProps.baseline`
+ * `Unauthorized` iki ayrı şey: `canManagePermissions: false` **düzenleme** kapısı
+ * (matris `readOnly` görünür, Faz 3'ün story'si budur); sunucunun **403**'ü ise
+ * "ayarları hiç göremezsin" — onun için `unauthorized` bayrağı eklendi.
+ *
+ * Kanalı hâlâ olmayan brifing 2.9 istekleri (backend gelince): moderasyon
+ * tercihleri, ilan süreleri, sayfalama varsayılanları, audit özeti (hepsi
+ * "görünen veri") ve `permissionConflict` — `RolePermissionMatrixProps.baseline`
  * karşılaştırma yapabiliyor ama "başka bir superAdmin senden önce kaydetti"yi
- * söyleyecek bir hata kanalı yok.
+ * söyleyecek hata kanalı hâlâ yok.
  */
 export interface SettingsPageProps {
   /**
@@ -4447,6 +4839,32 @@ export interface SettingsPageProps {
    * iki kontrol farklı kapıların arkasında.
    */
   canManageDefaultTheme: boolean
+  /**
+   * Kabuk yükleniyor; brifing 3.5'in bu ekran için zorunlu `Loading` story'si
+   * (Faz 3'te kanalsızdı, RAPOR EDİLMİŞTİ).
+   *
+   * `true` iken ekran iskelet gösterir ve veri prop'larını (`rolePermissions`,
+   * `currentTheme` — yer tutucu geçilebilir) yok sayar. `AsyncState` yerine düz
+   * bayrak: ayarlar tek sorgu değil, ve reponun `StatCard`/`DataTable` kalıbı bu
+   * (her zaman var olan prop'un üstünde yükleme bayrağı). `saving`'den ayrı —
+   * biri ilk yükleme, öteki kaydetme.
+   *
+   * @default false
+   */
+  loading?: boolean
+  /**
+   * Sunucu ayarları 403 ile reddetti; brifing 3.5'in zorunlu `Unauthorized`
+   * story'sinin **sunucu** hâli.
+   *
+   * `canManagePermissions: false`'tan **farklı**: o "düzenleyemezsin ama görürsün"
+   * (matris `readOnly`), bu "hiç göremezsin". `true` iken ekran
+   * `ErrorState variant="page"` gösterir (tekrar dene yok — 403 tekrar denemekle
+   * geçmez) ve matris/tema hiç render edilmez. İstemcinin izin listesi bayatlamış
+   * olabilir; önden bilinen yetkisizlikte bu ekran zaten hiç açılmaz.
+   *
+   * @default false
+   */
+  unauthorized?: boolean
   /**
    * Kaydetme sürüyor; matris kilitlenir ve butonda spinner çıkar
    * (`RolePermissionMatrixProps.saving`).
@@ -4527,17 +4945,31 @@ export interface SettingsPageProps {
  * `filteredEmpty` okuması `ListingFilterValues`'ın JSDoc'unda — ama brifing 2.10
  * bu ekran için yalnız düz `empty` istiyor.
  *
- * **Brifing 2.10 "tarih, rol, KULLANICI ve EYLEME göre filtreleme" istiyor; son
- * ikisinin kanalı yok** — `actorId` ve `action` alanları bu tipte bulunmuyor,
- * dolayısıyla "Ayşe Demir ne yaptı" ve "kim ban attı" sorularının ikisi de yalnız
- * `query` içinde serbest metin olarak aranabiliyor; rol filtresi `actorRole`'e
- * bakıyor, kişiye değil. İmzalar bu turda donduruldu — RAPOR EDİLDİ, uydurulmadı.
+ * Faz 3 sonrası (b) turunda `actorId` ve `actions` eklendi — brifing 2.10'un
+ * "kullanıcı ve eyleme göre filtreleme"si artık `query` serbest metnine mahkûm
+ * değil.
  */
 export interface AuditLogFilters {
   /** Serbest metin araması: admin adı, eylem veya varlık kimliği. */
   query?: string
   /** Seçili admin rolleri (`AuditLogEntry.actorRole`); boş dizi "hepsi". */
   roles: AdminRole[]
+  /**
+   * Seçili admin kimlikleri (`AuditLogEntry.actorId`); boş/verilmemiş "hepsi".
+   * Brifing 2.10'un "kullanıcıya göre filtreleme"si. Seçenek adları
+   * `AuditLogPageProps.actorOptions`'tan (id → ad).
+   *
+   * `roles`/`entityTypes`'ın aksine **opsiyonel** — Faz 3'ün mevcut çağıranlarını
+   * kırmadan eklendi (geriye dönük uyum); yeni bir filtre olduğu için her çağıran
+   * doldurmuyor.
+   */
+  actorIds?: string[]
+  /**
+   * Seçili eylem kodları (`AuditLogEntry.action`); boş/verilmemiş "hepsi". Brifing
+   * 2.10'un "eyleme göre filtreleme"si. Kodlar `AdminPermission` uzayından
+   * (`ADMIN_PERMISSION_LABEL` etiketler). Opsiyonel — `actorIds` ile aynı gerekçe.
+   */
+  actions?: string[]
   /**
    * Seçili varlık tipleri; boş dizi "hepsi".
    *
@@ -4585,17 +5017,34 @@ export interface AuditLogPageProps {
    *
    * Kurulan okuma: **JSON detayını açar** (`Drawer`), çünkü brifing 2.10 `Drawer`
    * ve `CodeBlock`'u bu ekranın türetilen component'leri sayıyor ve satırın kendi
-   * eylemi odur. "Varlığa gitme" için ayrı bir `onEntityOpen(entry)` gerekir;
-   * imzalar donduruldu, RAPOR EDİLDİ — bugün o eylem bu ekranda **yok**.
+   * eylemi odur. "Varlığa gitme" artık ayrı bir kanal (`onEntityOpen`).
    */
   onEntryOpen: (entry: AuditLogEntry) => void
   /**
-   * Hata bloğundaki "tekrar dene" butonu.
-   *
-   * Brifing 2.10'un "yetkiye göre dışa aktarma" eylemi için kanal **yok** ve
-   * yetkiyi okuyacak `availablePermissions` de yok. RAPOR EDİLDİ.
+   * "İlgili varlığa gitme" (brifing 2.10); `entityType`+`entityId` ile ilan/
+   * kullanıcı/şikayet detayına götürür — ekrandan **ayrılır** (Faz 3'te kanalsızdı,
+   * `onEntryOpen` ile karışıyordu, RAPOR EDİLMİŞTİ). Opsiyonel; verilmezse detay
+   * çekmecesinde "varlığa git" bağlantısı çıkmaz.
    */
+  onEntityOpen?: (entry: AuditLogEntry) => void
+  /** Hata bloğundaki "tekrar dene" butonu. */
   onRetry: () => void
+  /**
+   * Kullanıcı (aktör) filtresi için seçenek kaynağı: `actorId` → ad. Ekran
+   * kimlikleri adlara çeviremez (veri çekmez); sayfa katmanı doldurur. Verilmezse
+   * aktör filtresi render edilmez.
+   */
+  actorOptions?: SelectOption[]
+  /**
+   * "Yetkiye göre dışa aktarma" (brifing 2.10; Faz 3'te kanalsızdı, RAPOR
+   * EDİLMİŞTİ). Mevcut filtreyle eşleşen kayıtları dışa aktarır — ne aktardığını
+   * (CSV/JSON) çağıran belirler.
+   *
+   * Opsiyonel: yetki (`audit:view` zaten kapıda, dışa aktarma daha dar bir kapıya
+   * bağlanabilir) olmadan verilmez → buton çıkmaz. Sonuçsuz buton sunmamak için
+   * `onExport` verilmedikçe dışa aktar butonu render edilmez.
+   */
+  onExport?: () => void
 }
 
 /**
@@ -4647,18 +5096,23 @@ export interface AuthScreenProps {
    * Gösterilecek hata: yanlış parola, kilitli hesap, sunucu hatası. `Alert` ile
    * gösterilir.
    *
-   * **Tipi `string`, oysa diğer on ekran `UiError` kullanıyor — tutarsızlık ve
-   * RAPOR EDİLDİ.** `UiError` başlık/mesaj ayrımını, destek kodunu ve
-   * `retryable`'ı taşır; burada hepsi kayboluyor: `fatalError` modunda
-   * kullanıcının destek ekibine okuyacağı **kod gösterilemiyor**, oysa
-   * `ErrorState.code` tam onun için var ve brifing 2.11 bu ekranın türetilen
-   * component'leri arasında `ErrorState`'i sayıyor. İmzalar bu turda donduruldu;
-   * düzeltilmedi.
+   * Tipi bilerek `string` kaldı (diğer ekranların `UiError`'ından farklı): giriş
+   * ekranının hatası tek bir cümledir, `ErrorState`'in başlık/açıklama/retryable
+   * ayrımına ihtiyaç duymaz. **Destek kodu** eksikliği ise (`fatalError`'da
+   * kullanıcının okuyacağı kod) ayrı bir alanla kapatıldı — `errorCode`.
    *
    * Yokluğu bir durum (hata yok), bu yüzden `meta.args`'a konmaz (AGENTS.md,
    * TS2375) — `LoginError` story'si kendi verir.
    */
   error?: string
+  /**
+   * Destek koduna eşlik eden kod; `fatalError`/`forbidden` modunda kullanıcının
+   * destek ekibine okuyacağı referans (Faz 3'te kanalsızdı, RAPOR EDİLMİŞTİ —
+   * `error` düz string olduğu için `UiError.code` karşılığı yoktu).
+   *
+   * `error` ile birlikte gösterilir; mono yazıyla, seçilebilir. Yokluğu bir durum.
+   */
+  errorCode?: string
   /**
    * Giriş formu gönderildiğinde çalışır. Verilmezse form hiç render edilmez.
    *

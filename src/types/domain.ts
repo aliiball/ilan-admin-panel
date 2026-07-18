@@ -1104,6 +1104,43 @@ export interface DashboardMetrics {
   dailyNewListings: TimeSeriesPoint[]
   dailyModerationCount: TimeSeriesPoint[]
   categoryDistribution: CategoryDistributionItem[]
+  /*
+    Faz 3 sonrası (b) turunda eklenen alanlar — brifing 2.2'nin Faz 3'te
+    KANALSIZ kalan üç verisi ("en uzun bekleyen ilanlar", "son moderasyon
+    işlemleri", "moderatör bazında işlem hacmi") ve onay/red ayrımı. Hepsi
+    OPSİYONEL: `fixtures/dashboard.ts` ve mevcut çağıranlar kırılmadan eklendi
+    (geriye dönük uyum). `domain.ts` = FastAPI şartnamesi; bu alanlar backend
+    gelince kesinleşir.
+  */
+  /** En uzun süredir onay bekleyen ilanlar (brifing 2.2). En eski başta. */
+  longestWaitingListings?: Listing[]
+  /** Son moderasyon işlemleri (brifing 2.2). En yeni başta. */
+  recentModerationEvents?: ModerationEvent[]
+  /**
+   * Moderatör bazında işlem hacmi (brifing 2.2: "yalnızca yetkili rollere").
+   * Yetki kapısı sayfa katmanının: `moderation:viewVolume` gibi bir izin yok,
+   * ekran `availablePermissions`'a bakamıyor — dolayısıyla bu blok verildiğinde
+   * gösterilir, gösterip göstermemeye çağıran karar verir.
+   */
+  moderatorVolume?: ModeratorVolumeItem[]
+  /**
+   * Günlük **onay** sayısı; `dailyModerationCount`'un ayrıştırılmış hâli.
+   * Brifing 2.2 "onay/red sayısı" istiyordu ama `dailyModerationCount` tek
+   * ayrışmamış seriydi — onay/red grafiği çizilemiyordu. `dailyRejections` ile
+   * birlikte verilir; toplamları `dailyModerationCount`'a eşit olmalı.
+   */
+  dailyApprovals?: TimeSeriesPoint[]
+  /** Günlük **red** sayısı; `dailyApprovals`'ın simetriği. */
+  dailyRejections?: TimeSeriesPoint[]
+}
+
+/** Bir moderatörün belirli bir penceredeki işlem hacmi (brifing 2.2). */
+export interface ModeratorVolumeItem {
+  adminId: UUID
+  adminName: string
+  approvedCount: number
+  rejectedCount: number
+  changesRequestedCount: number
 }
 
 export interface Paginated<T> {
@@ -1124,5 +1161,21 @@ export interface AuditLogEntry {
   entityId: UUID
   summary: string
   metadata: Record<string, unknown>
+  createdAt: ISODateTime
+}
+
+/**
+ * Bir ilana iliştirilen admin notu (brifing 2.5: "admin notları").
+ *
+ * Faz 3 sonrası (b) turunda eklendi; `ListingReviewData.adminNotes` taşır.
+ * **Backend gelince kesinleşir** — `domain.ts` fiilen FastAPI'nin şartnamesidir,
+ * bu tip sunucunun döndüreceği şekle göre daralabilir.
+ */
+export interface AdminNote {
+  id: UUID
+  listingId: UUID
+  authorId: UUID
+  authorName: string
+  text: string
   createdAt: ISODateTime
 }
