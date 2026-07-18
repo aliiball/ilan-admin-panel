@@ -114,7 +114,22 @@ export function DataTable<T extends { id: string }>({
             <thead className={css.thead({ sticky: stickyHeader })}>
               <tr>
                 {selectable ? (
-                  <th className={`${css.th({ density })} ${css.selectionCell}`} />
+                  <th className={`${css.th({ density })} ${css.selectionCell}`}>
+                    {/*
+                      Boş `<th>` DEĞİL — Faz 3'te ölçüldü: axe `empty-table-header`
+                      ihlali veriyordu ve a11y kapısı `'error'`'a çekildiği için
+                      `selectable` bir tabloyu yükleme durumunda gösteren her
+                      story düşüyordu (`ListingListPage` → `Loading`).
+
+                      Yüklü dal bu hücreyi `hideLabel`'lı Checkbox ile dolduruyor;
+                      yükleme dalında kutu **yok** (iskelette çalışan kontrol
+                      sunmak yanlış olurdu), o yüzden başlığın adı düz gizli
+                      metinle veriliyor. Sütunun bir adı olmak zorunda: ekran
+                      okuyucu kullanıcısı sütunlar arasında gezerken adsız bir
+                      sütun "boş" diye okunur.
+                    */}
+                    <span className={css.visuallyHidden}>Seçim</span>
+                  </th>
                 ) : null}
                 {columns.map((sutun) => (
                   <th

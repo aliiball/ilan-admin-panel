@@ -142,6 +142,25 @@ export const selectionCell = style({
   paddingInlineEnd: 0,
 })
 
+/**
+ * Görsel olarak gizli, erişilebilirlik ağacında açık.
+ *
+ * `visibility: hidden`/`display: none` **kullanılmıyor**: ikisi de alt ağacı
+ * erişilebilir ad hesabından siler (Button'ın `loading` hatası tam buydu).
+ * `clip` + 1 piksel kalıbı repoda RolePermissionMatrix ve StatCard'da da aynı.
+ */
+export const visuallyHidden = style({
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: 0,
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  borderWidth: 0,
+})
+
 /** Durum bloğu: loading/empty/error hepsi tablo genişliğinde ortalanır. */
 export const stateBlock = style({
   display: 'grid',

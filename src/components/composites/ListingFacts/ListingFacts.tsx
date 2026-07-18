@@ -641,7 +641,17 @@ export function ListingFacts({
         <section key={bolum.id} className={css.section}>
           {/*
             `<h3>`: panel bir detay sayfasının içinde yaşıyor, h1 sayfanın ve h2
-            bölümün. Sözleşmede başlık düzeyi prop'u yok; gerekirse eklenmeli.
+            bölümün.
+
+            Faz 2'de bu bir varsayımdı ("gerekirse `headingLevel` prop'u
+            eklenmeli"); Faz 3'te tüketici gelince ölçüldü ve **doğru çıktı**:
+            `ListingReviewPanel` bölümlerini `<h2>` ile açıyor, sayfanın `<h1>`'i
+            ise PageHeader'ın (Faz 4). Zincir h1 → h2 → h3, `heading-order` temiz.
+
+            Prop eklenmedi: tek tüketici varsayımı doğruluyor ve tüketicisi
+            olmayan bir kanal açmak, `sparkline`'da reddedilen hatanın aynısı
+            olurdu. Başka bir yuvalama gerekirse `headingLevel?: 2 | 3 | 4`
+            geriye dönük uyumlu bir ek.
           */}
           <h3 className={css.sectionTitle}>{bolum.title}</h3>
           <dl className={css.list({ variant: 'sections' })}>

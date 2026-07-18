@@ -101,9 +101,23 @@ export const rangeLegend = style({
   fontWeight: vars.font.weight.medium,
 })
 
+/**
+ * `minmax(0, 1fr)` — düz `1fr` DEĞİL. Faz 3'te ölçüldü.
+ *
+ * `1fr`'in tabanı `auto`, yani **min-content**: `<input>`a `size` verilmediği
+ * için tarayıcı varsayılanı (~199 piksel) artı iki `2.5rem` basamak ve kenarlık,
+ * her iz için ~281 piksel taban demekti (2×281 + gap = 570). `numberRange`
+ * filtresi veren **her** tüketici ~590 pikselin altında kabını taşırıyordu;
+ * `ListingListPage` 320 pikselde kökü 587'ye açıyordu.
+ *
+ * Görünmemesinin sebebi: FilterBar'ın kendi story'leri yatay taşmayı hiç
+ * ölçmüyor. `NumberInput.input`'a `minWidth: 0` yazmak da çözmez — `min-width`
+ * bir min-content katkısını yalnız **tabanlar**, asla tavanlamaz; tavanlayan şey
+ * izin kendisidir.
+ */
 export const rangeInputs = style({
   display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
   gap: vars.space[2],
 })
 

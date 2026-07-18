@@ -2,12 +2,34 @@ import { style } from '@vanilla-extract/css'
 import { recipe } from '@vanilla-extract/recipes'
 import { vars } from '@/tokens/contract.css'
 
+/**
+ * **Kolon izi `minmax(0, 1fr)`, düz `1fr` değil — ve bu tek satır bir hataydı.**
+ *
+ * Faz 3'te ölçüldü (`UserDetailPage`, 320 pikselde sayfa 629'a genişliyordu):
+ * `horizontal` yalnız satır izini bildiriyordu, kolon izi **örtük `auto`**
+ * kalıyordu. `auto` izin tabanı `min-content`'tir ve `panel` de bir grid öğesi
+ * olarak `min-width: auto` ile geliyor — yani panelin otomatik minimum boyutu
+ * içeriğinin min-content'i oluyordu. İçeride geniş bir tablo varsa iz onun
+ * min-content'ine (629 piksel) kilitleniyor, panel `width: 100%` olan kökü
+ * aşıyor ve kaydıran şey `DataTable`'ın kendi `overflow-x` kabı değil **SAYFA**
+ * oluyordu. `vertical`'ın `1fr`'i de aynı sebeple `minmax(0, 1fr)`.
+ *
+ * Aynı hata component'in kendi sözleşmesini de sessizce deliyordu: `list`
+ * "Sekme sayısı taşarsa erişilebilir yatay kaydırma; kesilmez" diyor ama iz
+ * max-content'e açıldığı için şerit hiç kaydırmıyor, kabını genişletiyordu.
+ *
+ * Kaçan tüketiciler tesadüfen kaçtı: kaydırma kabı olan bir grid öğesinin
+ * otomatik minimum boyutu **sıfırdır**, o yüzden `overflow: hidden` taşıyan bir
+ * sarmalayıcının (`DataTable`'ın `striped` görünümü) içindeki tablo sorunu
+ * göstermiyordu. `plain` görünüm göstermiyordu — yani hatayı gizleyen şey
+ * `DataTable`'dı, `Tabs` değil.
+ */
 export const root = recipe({
   base: { display: 'grid', width: '100%' },
   variants: {
     orientation: {
-      horizontal: { gridTemplateRows: 'auto 1fr' },
-      vertical: { gridTemplateColumns: 'auto 1fr', gap: vars.space[5] },
+      horizontal: { gridTemplateRows: 'auto 1fr', gridTemplateColumns: 'minmax(0, 1fr)' },
+      vertical: { gridTemplateColumns: 'auto minmax(0, 1fr)', gap: vars.space[5] },
     },
   },
   defaultVariants: { orientation: 'horizontal' },
