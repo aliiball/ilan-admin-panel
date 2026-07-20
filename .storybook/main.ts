@@ -31,6 +31,21 @@ const config = {
   },
 
   staticDirs: ['../public'],
+
+  /**
+   * GitHub Pages project site'ı kökten değil alt yoldan servis edilir
+   * (https://aliiball.github.io/ilan-admin-panel/). Base ayarlanmazsa asset'ler
+   * `/` kökünden istenir, hepsi 404 olur ve boş sayfa gelir.
+   *
+   * Yalnızca STORYBOOK_BASE_PATH tanımlıysa devreye girer; lokal `storybook dev`
+   * bu env'i vermez, dolayısıyla etkilenmez. Değer Pages workflow'unda geçilir.
+   */
+  viteFinal: async (config) => {
+    if (process.env.STORYBOOK_BASE_PATH) {
+      config.base = process.env.STORYBOOK_BASE_PATH
+    }
+    return config
+  },
 } satisfies StorybookConfig
 
 export default config
